@@ -1,5 +1,6 @@
 extends Node3D
 
+const SYMBOL_FONT := preload("res://assets/fonts/NotoSansSymbols2-Regular.ttf")
 const BINDINGS := {
 	"reset": [KEY_F9, JOY_BUTTON_BACK],
 	"take": [KEY_E, JOY_BUTTON_Y],
@@ -16,6 +17,14 @@ var workshop = preload("res://workshop.gd").new()
 @onready var camera: Camera3D = $Camera
 
 func _ready() -> void:
+	# Web exports need an explicit fallback for the HUD symbols.
+	var ui_fonts: Array[Font] = [ThemeDB.get_default_theme().default_font, ThemeDB.fallback_font]
+	for font in ui_fonts:
+		var fallbacks := font.fallbacks
+		if SYMBOL_FONT in fallbacks: continue
+		fallbacks.append(SYMBOL_FONT)
+		font.fallbacks = fallbacks
+
 	for action in BINDINGS:
 		if InputMap.has_action(action): continue
 		InputMap.add_action(action)

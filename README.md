@@ -43,3 +43,5 @@ Les modèles et textures tiers inclus proviennent des packs suivants, distribué
 - Kenney pour les véhicules, les meubles et le personnage animé. [Car Kit](https://kenney.nl/assets/car-kit) · [Furniture Kit](https://kenney.nl/assets/furniture-kit) · [Animated Characters Protagonists](https://kenney.nl/assets/animated-characters-protagonists)
 - Grab3D pour le pont et plusieurs pièces mécaniques. Le pont est adapté pour dégager la vue. [Cozy Car Parts & Garage Kit](https://grab3d.com/kits/cozy-car-parts/)
 - 3DAssets.dev pour le mobilier et l’équipement du garage. Les modèles utilisés ont été adaptés au format glTF de Godot. [Car Repair Garage and MOT Workshop](https://3dassets.dev/packs/car-repair-garage-and-mot-workshop)
+
+Noto Sans Symbols 2 fournit les caractères spéciaux de l’interface. [Police](https://fonts.google.com/noto/specimen/Noto+Sans+Symbols+2) · [SIL Open Font License 1.1](assets/fonts/OFL.txt)
