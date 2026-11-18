@@ -69,9 +69,11 @@ jobs:
           for extension in html js pck wasm; do
             test -s "build/web/$build_name.$extension"
           done
-          sed -e "s/__GAME_URL__/$build_name.html/g" -e "s/__BUILD__/$GITHUB_SHA/g" web/index.html > build/web/index.html
+          version=$(sed -n 's/^config\/version="\([^"]*\)"$/\1/p' project.godot)
+          test -n "$version"
+          sed -e "s/__GAME_URL__/$build_name.html/g" -e "s/__BUILD__/$GITHUB_SHA/g" -e "s/__VERSION__/$version/g" web/index.html > build/web/index.html
           cp web/lobby.css web/lobby.js build/web/
-          cp -R web/vendor build/web/
+          cp -R web/vendor web/images build/web/
 
       - name: Upload the game to GitHub Pages
         uses: actions/upload-pages-artifact@v4

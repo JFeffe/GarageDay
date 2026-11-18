@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Gère un garage miniature en solo ou à deux.">
+  <meta name="theme-color" content="#101e20">
   <title>Garage Day</title>
   <link rel="stylesheet" href="lobby.css?rev=__BUILD__">
   <script defer src="vendor/peerjs.min.js"></script>
@@ -11,66 +12,131 @@
 </head>
 <body data-game="__GAME_URL__">
   <main class="lobby" id="lobby">
-    <header>
-      <h1>Garage Day</h1>
-      <p>Accueille les clients, répare leurs voitures et fais tourner ton garage pendant dix jours.</p>
+    <header class="topbar">
+      <button class="back quiet" id="back" type="button" hidden>← Retour</button>
+      <span class="version">v__VERSION__</span>
     </header>
-    <form id="start-form">
-      <fieldset id="layout-picker">
-        <legend>Choisis ton garage</legend>
-        <div class="layouts">
+
+    <section class="home" id="home" aria-labelledby="title">
+      <div class="home-menu">
+        <h1 id="title">Garage <span>Day</span></h1>
+        <p>Fais tourner ton garage de quartier.</p>
+        <nav class="menu-buttons" aria-label="Menu principal">
+          <button class="primary" id="resume" type="button" hidden>Continuer</button>
+          <button class="primary" id="new-game" type="button">Nouvelle partie</button>
+          <button id="multiplayer-button" type="button">Multijoueur</button>
+          <button id="options-button" type="button">Options</button>
+        </nav>
+        <button class="quiet patch-link" id="notes-button" type="button">Notes de mise à jour <span aria-hidden="true">↗</span></button>
+      </div>
+      <figure class="hero-art">
+        <img src="images/atelier.webp?rev=__BUILD__" alt="Une berline au capot ouvert sur le pont de La Traversée, à côté du mécanicien">
+        <figcaption>La Traversée</figcaption>
+      </figure>
+    </section>
+
+    <section class="screen" id="map-screen" aria-labelledby="map-title" hidden>
+      <h2 id="map-title" tabindex="-1">Choisis ton garage</h2>
+      <form id="start-form">
+        <fieldset class="layouts">
+          <legend class="visually-hidden">Bâtiment</legend>
           <label class="layout">
             <input type="radio" name="layout" value="0" checked>
-            <span class="plan" aria-hidden="true"><i></i><b></b></span>
-            <strong>La Traversée</strong><span>1 baie · Bureau au nord</span>
+            <img src="images/traversee.webp?rev=__BUILD__" alt="" width="1280" height="768">
+            <span class="layout-label"><strong>La Traversée</strong><span>1 baie · Bureau au nord</span></span>
           </label>
           <label class="layout">
             <input type="radio" name="layout" value="1">
-            <span class="plan" aria-hidden="true"><i></i><b></b><b></b></span>
-            <strong>Le Tandem</strong><span>2 baies · Salle commune</span>
+            <img src="images/tandem.webp?rev=__BUILD__" alt="" width="1280" height="768" loading="lazy">
+            <span class="layout-label"><strong>Le Tandem</strong><span>2 baies · Salle d’attente commune</span></span>
           </label>
           <label class="layout">
             <input type="radio" name="layout" value="2">
-            <span class="plan" aria-hidden="true"><i></i><b></b><b></b><b></b></span>
-            <strong>Les Trois Ponts</strong><span>3 baies · Bureau central</span>
+            <img src="images/trois-ponts.webp?rev=__BUILD__" alt="" width="1280" height="768" loading="lazy">
+            <span class="layout-label"><strong>Les Trois Ponts</strong><span>3 baies · Bureau central</span></span>
           </label>
+        </fieldset>
+        <div class="screen-actions"><button class="primary" id="start" type="submit">Jouer</button></div>
+      </form>
+    </section>
+
+    <section class="screen" id="multiplayer" aria-labelledby="multiplayer-title" hidden>
+      <h2 id="multiplayer-title" tabindex="-1">Multijoueur</h2>
+      <p>Jouez à deux sur la même caméra. La progression est sauvegardée dans le navigateur de l’hôte.</p>
+      <div class="inline-actions">
+        <button class="primary" id="host" type="button">Créer une partie</button>
+        <button id="resume-host" type="button" hidden>Reprendre comme hôte</button>
+      </div>
+      <form class="join-form" id="join-form">
+        <label for="join-link">Lien d’invitation</label>
+        <div class="inline-actions">
+          <input id="join-link" type="url" placeholder="Colle le lien de l’hôte" required>
+          <button type="submit">Rejoindre</button>
         </div>
-      </fieldset>
-      <div class="actions" id="start-actions">
-        <button class="primary" type="submit">Jouer</button>
-        <button type="button" id="host">Héberger à deux</button>
-        <button type="button" id="resume" hidden>Reprendre comme hôte</button>
+      </form>
+    </section>
+
+    <section class="screen" id="invited" aria-labelledby="invited-title" hidden>
+      <h2 id="invited-title" tabindex="-1">Invitation au garage</h2>
+      <p>L’hôte doit garder sa partie ouverte pour que tu puisses la rejoindre.</p>
+      <button class="primary" id="join" type="button">Rejoindre la partie</button>
+    </section>
+
+    <section class="screen" id="options" aria-labelledby="options-title" hidden>
+      <h2 id="options-title" tabindex="-1">Options</h2>
+      <div class="options-grid">
+        <div class="panel">
+          <h3>Affichage</h3>
+          <label for="quality">Qualité graphique</label>
+          <select id="quality" aria-describedby="quality-details">
+            <option value="fast">Fluide</option>
+            <option value="balanced" selected>Équilibré</option>
+            <option value="high">Qualité</option>
+          </select>
+          <p id="quality-details"></p>
+          <label class="check"><input id="show-fps" type="checkbox"> Afficher les images par seconde</label>
+        </div>
+        <div class="panel keyboard">
+          <h3>Commandes</h3>
+          <table>
+            <thead><tr><th scope="col">Action</th><th scope="col">Clavier</th><th scope="col">Manette Xbox</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Marcher</th><td>W A S D ou flèches</td><td>Stick gauche</td></tr>
+              <tr><th scope="row">Viser</th><td>I J K L</td><td>Stick droit</td></tr>
+              <tr><th scope="row">Interagir · maintenir pour travailler</th><td>F</td><td>A</td></tr>
+              <tr><th scope="row">Prendre ou poser</th><td>E</td><td>Y</td></tr>
+              <tr><th scope="row">Tourner ou vider le chariot</th><td>R</td><td>X</td></tr>
+              <tr><th scope="row">Annuler</th><td>Q</td><td>B</td></tr>
+              <tr><th scope="row">Zoom</th><td>− / =</td><td>LB / RB</td></tr>
+              <tr><th scope="row">Conduire</th><td>W / S accélérer ou reculer<br>A / D braquer</td><td>Stick gauche ↑ / ↓<br>Stick droit ← / →</td></tr>
+              <tr><th scope="row">Freiner en voiture</th><td>R</td><td>X</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="actions" id="join-actions" hidden>
-        <button class="primary" type="button" id="join">Rejoindre la partie</button>
-        <a href="./">Retour à l’accueil</a>
-      </div>
-      <p class="note" id="start-note">En ligne, vous partagez la même caméra. La progression est conservée dans le navigateur de l’hôte.</p>
-      <p class="notice" id="notice" role="status"></p>
-    </form>
-    <details open>
-      <summary>Commandes</summary>
-      <table>
-        <thead><tr><th scope="col">Action</th><th scope="col">Clavier</th><th scope="col">Manette Xbox</th></tr></thead>
-        <tbody>
-          <tr><th scope="row">Marcher</th><td>W A S D ou flèches</td><td>Stick gauche</td></tr>
-          <tr><th scope="row">Viser</th><td>I J K L</td><td>Stick droit</td></tr>
-          <tr><th scope="row">Interagir · maintenir pour travailler</th><td>F</td><td>A</td></tr>
-          <tr><th scope="row">Prendre ou poser</th><td>E</td><td>Y</td></tr>
-          <tr><th scope="row">Tourner · vider le chariot tracté</th><td>R</td><td>X</td></tr>
-          <tr><th scope="row">Annuler</th><td>Q</td><td>B</td></tr>
-          <tr><th scope="row">Zoom</th><td>− / =</td><td>LB / RB</td></tr>
-          <tr><th scope="row">Conduire</th><td>W / S accélérer · A / D braquer</td><td>Stick gauche ↑ / ↓ · stick droit ← / →</td></tr>
-          <tr><th scope="row">Freiner en voiture</th><td>R</td><td>X</td></tr>
-        </tbody>
-      </table>
-    </details>
+    </section>
+
+    <section class="screen" id="patch-notes" aria-labelledby="notes-title" hidden>
+      <h2 id="notes-title" tabindex="-1">Notes de mise à jour</h2>
+      <article class="panel release">
+        <h3>0.1.0 <span>Accueil et fluidité Web</span></h3>
+        <ul>
+          <li>Nouvel écran d’accueil avec la reprise de partie, le multijoueur et les options.</li>
+          <li>Choix parmi trois garages avec de vrais aperçus du jeu.</li>
+          <li>Trois réglages graphiques, un compteur d’images par seconde et un tableau de service allégé.</li>
+          <li>Sauvegarde solo dans le navigateur. Après une fermeture, la reprise se fait au dernier atelier libre sauvegardé.</li>
+        </ul>
+      </article>
+    </section>
+    <p class="notice" id="notice" role="status"></p>
   </main>
+
   <section class="game" id="game" hidden aria-label="Garage Day en cours">
     <iframe id="game-frame" title="Garage Day" allow="autoplay; gamepad; fullscreen" hidden></iframe>
     <video id="guest-view" autoplay muted playsinline tabindex="0" aria-label="Écran partagé de l’hôte" hidden></video>
     <div class="room" id="room" hidden>
       <span id="room-status" role="status"></span>
+      <span id="fps" class="fps" hidden></span>
       <button id="invite" type="button" hidden>Copier le lien</button>
       <button id="sound" type="button" hidden>Activer le son</button>
       <button id="exit" type="button">Quitter</button>

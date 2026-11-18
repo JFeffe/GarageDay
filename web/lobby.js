@@ -1,34 +1,61 @@
 "use strict";
 
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(el => [el.id, el]));
-const saveKey = "garage-day.host.v1";
+const saveKeys = { solo: "garage-day.solo.v1", host: "garage-day.host.v1" };
+const settingsKey = "garage-day.display.v1";
+const qualities = {
+  fast: "Résolution 3D réduite et ombres dynamiques désactivées.",
+  balanced: "Résolution 3D légèrement réduite et ombres simplifiées.",
+  high: "Résolution 3D maximale et ombres détaillées.",
+};
 const protocol = 2;
-const invitation = new URLSearchParams(location.hash.slice(1)).get("join");
+let invitation = new URLSearchParams(location.hash.slice(1)).get("join");
 const validRoom = id => /^gd-[0-9a-f]{32}$/.test(id ?? "");
 const openInput = [0, 0, 0, 0, 0, 0, 0];
 let launch = { mode: "solo", layout: 0, save: "" };
 let peer, channel, call, stream, timeout;
 let gameSound;
 let ready = false;
+let resumable = false;
+let paused = false;
+let gameControls;
+let pickerMode = "solo";
+let screen = "home";
 let lastInput = openInput;
 let pressed = 0;
 let lastInputAt = 0;
 const keys = new Set();
 
-function loadSave() {
-  try { return localStorage.getItem(saveKey) || ""; }
+function loadSave(mode) {
+  try { return localStorage.getItem(saveKeys[mode]) || ""; }
   catch { return ""; }
 }
 
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(settingsKey));
+    if (saved && Object.hasOwn(qualities, saved.quality)) {
+      return { quality: saved.quality, showFps: saved.showFps === true };
+    }
+  } catch { /* Use the default when storage is unavailable. */ }
+  return { quality: "balanced", showFps: false };
+}
+
+let settings = loadSettings();
+
 window.GarageDay = {
-  startInfo: () => JSON.stringify(launch),
-  gameReady() {
+  startInfo: () => JSON.stringify({ ...launch, ...settings }),
+  gameReady(controls) {
+    gameControls = controls;
     ready = true;
-    elements["game-frame"].contentDocument?.querySelector("canvas")?.focus();
+    focusGame();
     if (launch.mode === "host") {
       showInvitation();
       if (channel?.open) shareGame();
     } else elements["room-status"].textContent = "";
+  },
+  reportFps(fps) {
+    elements.fps.textContent = `${fps} i/s`;
   },
   guestInput() {
     const online = !!channel?.open && launch.mode === "host";
@@ -60,29 +87,96 @@ window.GarageDay = {
     gameSound.cursor += buffer.duration;
   },
   storeSave(data) {
-    if (launch.mode !== "host") return;
+    const key = saveKeys[launch.mode];
+    if (!key) return;
+    resumable = Boolean(data);
     try {
-      if (data) localStorage.setItem(saveKey, data);
-      else localStorage.removeItem(saveKey);
+      if (data) localStorage.setItem(key, data);
+      else localStorage.removeItem(key);
     } catch {
       elements["room-status"].textContent = "Le navigateur bloque la sauvegarde locale.";
     }
   },
 };
 
+function focusGame() {
+  elements["game-frame"].contentDocument?.querySelector("canvas")?.focus();
+}
+
+function showScreen(next, focus = true, message = "") {
+  for (const name of ["home", "map-screen", "multiplayer", "invited", "options", "patch-notes"]) {
+    elements[name].hidden = name !== next;
+  }
+  screen = next;
+  elements.back.hidden = next === "home";
+  elements.resume.hidden = !(paused || loadSave("solo") || loadSave("host"));
+  elements["resume-host"].hidden = !loadSave("host");
+  elements.notice.textContent = message;
+  if (focus) {
+    const heading = next === "home"
+      ? (elements.resume.hidden ? elements["new-game"] : elements.resume)
+      : elements[next].querySelector("h2");
+    heading.focus();
+  }
+}
+
+function openPicker(mode) {
+  pickerMode = mode;
+  elements.start.textContent = mode === "host" ? "Héberger" : "Jouer";
+  showScreen("map-screen");
+}
+
+function updateDisplay() {
+  elements["quality-details"].textContent = qualities[settings.quality];
+  elements.fps.hidden = !settings.showFps || launch.mode === "guest";
+  if (elements.fps.hidden) elements.fps.textContent = "";
+}
+
 function openGame(mode, layout = 0, save = "") {
   launch = { mode, layout, save };
-  ready = false;
+  ready = paused = resumable = false;
+  gameControls = undefined;
   elements.lobby.hidden = true;
   elements.game.hidden = false;
   elements.room.hidden = false;
   elements.invite.hidden = true;
   elements.sound.hidden = true;
+  elements.fps.textContent = "";
+  updateDisplay();
+  elements.exit.textContent = mode === "solo" ? "Menu" : "Quitter";
   elements["invite-url"].hidden = true;
   elements["room-status"].textContent = "Chargement…";
   elements["guest-view"].hidden = mode !== "guest";
   elements["game-frame"].hidden = mode === "guest";
   if (mode !== "guest") elements["game-frame"].src = document.body.dataset.game;
+}
+
+function pauseSolo() {
+  if (!ready || !resumable) {
+    returnHome();
+    return;
+  }
+  gameControls("pause", true);
+  paused = true;
+  elements.game.hidden = true;
+  elements.lobby.hidden = false;
+  showScreen("home");
+}
+
+function continueGame() {
+  if (paused) {
+    paused = false;
+    elements.lobby.hidden = true;
+    elements.game.hidden = false;
+    gameControls("graphics", settings.quality, settings.showFps);
+    gameControls("pause", false);
+    focusGame();
+  } else {
+    const solo = loadSave("solo");
+    const hosted = loadSave("host");
+    if (solo) openGame("solo", 0, solo);
+    else if (hosted) hostGame(0, hosted);
+  }
 }
 
 function returnHome(message = "") {
@@ -93,15 +187,14 @@ function returnHome(message = "") {
   gameSound?.context.close().catch(() => {});
   gameSound = undefined;
   oldPeer?.destroy();
-  ready = false;
+  ready = paused = resumable = false;
+  gameControls = undefined;
   keys.clear();
   elements["game-frame"].removeAttribute("src");
   elements["guest-view"].srcObject = null;
   elements.game.hidden = true;
   elements.lobby.hidden = false;
-  elements.notice.textContent = message;
-  elements.resume.hidden = !loadSave();
-  if (invitation !== null) elements.resume.hidden = true;
+  showScreen(invitation !== null ? "invited" : "home", true, message);
 }
 
 function clearConnection() {
@@ -138,6 +231,7 @@ function showInvitation() {
 }
 
 function hostGame(layout, save = "") {
+  if (paused && !confirm("Fermer le solo pour héberger ? La reprise solo se fera au dernier atelier libre sauvegardé.")) return;
   try {
     const id = "gd-" + crypto.randomUUID().replaceAll("-", "");
     peer = peerFor(id);
@@ -312,15 +406,52 @@ setInterval(sendInput, 33);
 const selectedLayout = () => Number(new FormData(elements["start-form"]).get("layout"));
 elements["start-form"].addEventListener("submit", event => {
   event.preventDefault();
-  if (invitation === null) openGame("solo", selectedLayout());
+  if ((loadSave(pickerMode) || (pickerMode === "solo" && paused)) &&
+      !confirm("Remplacer la sauvegarde de cette partie ?")) return;
+  if (pickerMode === "host") hostGame(selectedLayout());
+  else openGame("solo", selectedLayout());
 });
-elements.host.addEventListener("click", () => {
-  if (loadSave() && !confirm("Créer une nouvelle partie hébergée et remplacer la sauvegarde de l’hôte ?")) return;
-  hostGame(selectedLayout());
+elements["new-game"].addEventListener("click", () => openPicker("solo"));
+elements["multiplayer-button"].addEventListener("click", () => showScreen("multiplayer"));
+elements["options-button"].addEventListener("click", () => showScreen("options"));
+elements["notes-button"].addEventListener("click", () => showScreen("patch-notes"));
+elements.back.addEventListener("click", () => {
+  if (screen === "invited") {
+    invitation = null;
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  showScreen(screen === "map-screen" && pickerMode === "host" ? "multiplayer" : "home");
 });
-elements.resume.addEventListener("click", () => hostGame(0, loadSave()));
+elements.resume.addEventListener("click", continueGame);
+elements.host.addEventListener("click", () => openPicker("host"));
+elements["resume-host"].addEventListener("click", () => hostGame(0, loadSave("host")));
+elements["join-form"].addEventListener("submit", event => {
+  event.preventDefault();
+  const room = new URL(elements["join-link"].value).hash.slice(1);
+  const id = new URLSearchParams(room).get("join");
+  if (!validRoom(id)) {
+    elements.notice.textContent = "Ce lien d’invitation est invalide.";
+    return;
+  }
+  invitation = id;
+  if (paused && !confirm("Fermer le solo pour rejoindre ? La reprise solo se fera au dernier atelier libre sauvegardé.")) {
+    invitation = null;
+    return;
+  }
+  elements.join.disabled = false;
+  joinGame();
+});
 elements.join.addEventListener("click", joinGame);
-elements.exit.addEventListener("click", () => returnHome());
+elements.exit.addEventListener("click", () => launch.mode === "solo" ? pauseSolo() : returnHome());
+elements.quality.value = settings.quality;
+elements["show-fps"].checked = settings.showFps;
+for (const name of ["quality", "show-fps"]) {
+  elements[name].addEventListener("change", () => {
+    settings = { quality: elements.quality.value, showFps: elements["show-fps"].checked };
+    try { localStorage.setItem(settingsKey, JSON.stringify(settings)); } catch { /* Apply for this tab. */ }
+    updateDisplay();
+  });
+}
 elements.sound.addEventListener("click", () => {
   const video = elements["guest-view"];
   video.muted = !video.muted;
@@ -346,11 +477,7 @@ elements.invite.addEventListener("click", async () => {
   }
 });
 
-elements.resume.hidden = !loadSave();
-if (invitation !== null) {
-  elements["start-actions"].hidden = elements["layout-picker"].hidden = true;
-  elements["join-actions"].hidden = false;
-  elements["start-note"].textContent = "L’hôte doit garder le jeu ouvert. Vous partagez la caméra et le son du garage.";
-  elements.join.disabled = !validRoom(invitation);
-  if (!validRoom(invitation)) elements.notice.textContent = "Ce lien d’invitation est invalide.";
-}
+updateDisplay();
+elements.join.disabled = !validRoom(invitation);
+showScreen(invitation === null ? "home" : "invited", false,
+  invitation !== null && !validRoom(invitation) ? "Ce lien d’invitation est invalide." : "");

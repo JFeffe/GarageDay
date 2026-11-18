@@ -4,9 +4,15 @@ Garage Day est un jeu de gestion de garage miniature à jouer à la manette ou a
 
 **[Jouer à Garage Day dans le navigateur](https://jfeffe.github.io/GarageDay/)**
 
-## Jouer à deux dans le navigateur
+## Jouer dans le navigateur
 
-Choisis un garage et clique sur **Héberger à deux**. Copie le lien dans la barre de la partie et transmets-le à ton invité. L’hôte garde son onglet ouvert. Vous partagez la caméra et le son du garage. Les deux joueurs peuvent conduire, accueillir, réparer et encaisser. L’hôte choisit les pièces au rayon et gère le chariot, l’aménagement et les menus. L’invité peut régler le son dans la barre du jeu.
+**Nouvelle partie** donne accès aux trois garages. En solo, **Menu** met la partie en pause et **Continuer** la reprend. Après la fermeture de l’onglet, la reprise repart du dernier atelier libre sauvegardé, y compris la configuration avant le service. Les sauvegardes solo et multijoueur sont distinctes. Si les deux existent, la sauvegarde solo est accessible via **Continuer** et celle de l’hôte via **Multijoueur**.
+
+Dans **Options**, choisis entre **Fluide**, **Équilibré** et **Qualité**. Tu peux aussi afficher les images par seconde.
+
+### Jouer à deux
+
+Dans **Multijoueur**, clique sur **Créer une partie**, choisis un garage puis clique sur **Héberger**. Copie le lien dans la barre de la partie et transmets-le à ton invité. L’hôte garde son onglet ouvert. Vous partagez la caméra et le son du garage. Les deux joueurs peuvent conduire, accueillir, réparer et encaisser. L’hôte choisit les pièces au rayon et gère le chariot, l’aménagement et les menus. L’invité peut régler le son dans la barre du jeu.
 
 La partie hébergée est sauvegardée dans le navigateur de l’hôte en atelier libre et avant l’ouverture. **Reprendre comme hôte** permet de reprendre cette sauvegarde avec un nouveau lien. Une interruption pendant le service ramène au début de ce service. Le partage transmet l’image du jeu à l’invité. La connexion WebRTC est négociée via PeerServer Cloud et dépend du réseau des deux joueurs. [Documentation PeerJS](https://peerjs.com/client/getting-started) · [Licence MIT](web/vendor/LICENSE)
 

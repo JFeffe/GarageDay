@@ -15,6 +15,7 @@ const PARKING_SPEED := 1.25
 const CUSTOMER_NEAR := 1.4
 const RECEIPT_SECONDS := 2.2
 const GARAGE_CAMERA_ROTATION := Vector3(-63,0,0)
+const HUD_INTERVAL := 1.0/20.0
 
 enum IntakeStatus { APPROACH, TURN, LEFT, RIGHT, FORWARD, BACK, SLOW, BLOCKED, READY }
 enum ParkingStatus { ALIGN, SLOW, BLOCKED, READY, FULL }
@@ -42,6 +43,7 @@ var ticket: RichTextLabel
 var footer: RichTextLabel
 var menu: Control
 var ring: Control
+var hud_elapsed := 0.0
 var engine: AudioStreamPlayer
 var held := ""
 var held_origin := -1
@@ -123,10 +125,12 @@ func make_panel(width: float) -> RichTextLabel:
 	var panel := PanelContainer.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color("#1b323a")
-	style.border_color = Color("#547878")
+	style.bg_color = Color("#14272c")
+	style.border_color = Color("#3a5658")
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(10)
+	style.set_corner_radius_all(8)
+	style.shadow_color = Color(0.04,0.09,0.1,0.25)
+	style.shadow_size = 4
 	style.content_margin_left = 12
 	style.content_margin_right = 12
 	style.content_margin_top = 12
@@ -2075,7 +2079,12 @@ func update_view(dt: float, speed: float) -> void:
 	site.animate_personnel_door(player,dt,coop.guest.player if coop!=null and coop.online and not coop.guest.is_empty() else Vector2.INF)
 	sync_player(dt,speed)
 	update_camera(minf(dt*7,1))
-	update_hud()
+	hud_elapsed += dt
+	if hud_elapsed>=HUD_INTERVAL:
+		hud_elapsed = fmod(hud_elapsed,HUD_INTERVAL)
+		update_hud()
+	else:
+		update_action_ring()
 
 func movement_input() -> Vector2:
 	var pads := Input.get_connected_joypads()
@@ -2356,9 +2365,10 @@ func update_hud() -> void:
 	var rating := "[color=#ffd38b]%s[/color]   %s / 5"%[stars,("%.1f"%(run.rating/2.0)).replace(".",",")]
 	var state: String = {"day":run.clock_label(),"closing":"[color=#ffd38b]17 h 00[/color]",
 		"open":"Atelier libre","lost":"Garage fermé","won":"Partie gagnée"}[run.mode]
-	header.text = "[color=#93c4bd]GARAGE DAY  /  %s[/color]\n[b][font_size=21]Jour %d / 10  ·  %s[/font_size][/b]\n%s\n[color=#b6cbca]%d $  ·  %d clients en file[/color]" % [Map.LAYOUTS[layout][0],maxi(1,run.day),state,rating,run.cash,run.waiting.size()]
+	var header_text := "[color=#b4d8cd]GARAGE DAY  /  %s[/color]\n[b][font_size=21]Jour %d / 10  ·  %s[/font_size][/b]\n%s\n[color=#b6cbca]%d $  ·  %d clients en file[/color]" % [Map.LAYOUTS[layout][0],maxi(1,run.day),state,rating,run.cash,run.waiting.size()]
+	if header.text!=header_text: header.text = header_text
 	header.get_parent().position = Vector2(14,14)
-	var lines: Array[String] = ["[color=#9bd1c6]TABLEAU DE SERVICE[/color]"]
+	var lines: Array[String] = ["[color=#b4d8cd][b]TABLEAU DE SERVICE[/b][/color]"]
 	var planned_work := {}
 	var available_work := {}
 	for i in range(site.bays.size()):
@@ -2441,7 +2451,8 @@ func update_hud() -> void:
 	if relocating!="": equipment = site.stations[relocating].title
 	if pulling_cart: equipment = "Chariot · %d / 4"%cart_count
 	lines.append("[color=#9bd1c6]EN MAIN[/color]   "+equipment)
-	ticket.text = "\n".join(lines)
+	var ticket_text := "\n".join(lines)
+	if ticket.text!=ticket_text: ticket.text = ticket_text
 	ticket.custom_minimum_size.x = minf(335,view.x*0.41-24)
 	var ticket_panel: Control = ticket.get_parent()
 	ticket_panel.size = Vector2(ticket.custom_minimum_size.x+24,0)
@@ -2508,8 +2519,9 @@ func update_hud() -> void:
 	if notice_time>0 and not driving: hint = notice
 	var shortcuts := "View / F9 nouvelle partie   ·   LB / RB zoom"
 	if driven_bay>=0: shortcuts = "B / Q descendre à l’arrêt   ·   LB / RB zoom"
-	footer.text = "[center][color=%s][b]%s[/b][/color]\n%s\n[color=#a6bfbd][font_size=12]%s[/font_size][/color][/center]"%[
+	var footer_text := "[center][color=%s][b]%s[/b][/color]\n%s\n[color=#a6bfbd][font_size=12]%s[/font_size][/color][/center]"%[
 		instruction_color,instruction,hint,shortcuts]
+	if footer.text!=footer_text: footer.text = footer_text
 	footer.custom_minimum_size.x = minf(690,view.x-44)
 	var footer_panel: Control = footer.get_parent()
 	footer_panel.size = Vector2(footer.custom_minimum_size.x+24,0)
@@ -2535,8 +2547,13 @@ func update_hud() -> void:
 		var id := "cart" if pulling_cart else (held if held!="" else relocating)
 		var valid := can_drop(tile,id) or (pulling_cart and cart_kind=="used_tire" and can_drop(tile,"used_tire"))
 		site.preview.material_override.albedo_color = Color("#90c4a9") if valid else Color("#c0786b")
+	update_action_ring()
+
+func update_action_ring() -> void:
 	if action.is_empty(): ring.hide()
 	else:
+		var view: Vector2 = game.get_viewport().get_visible_rect().size
+		var ticket_panel: Control = ticket.get_parent()
 		var at: Vector2 = game.camera.unproject_position(Vector3(player.x,2.3,player.y))
 		at = at.clamp(Vector2(135,115),Vector2(maxf(135,view.x-135),maxf(115,view.y-125)))
 		ring.update_progress(progress/maxf(0.001,action.seconds),action.label,Color("#f1cf91"))
