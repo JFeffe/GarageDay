@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Gère un garage miniature en solo ou à deux.">
+  <title>Garage Day</title>
+  <link rel="stylesheet" href="lobby.css?rev=__BUILD__">
+  <script defer src="vendor/peerjs.min.js"></script>
+  <script defer src="lobby.js?rev=__BUILD__"></script>
+</head>
+<body data-game="__GAME_URL__">
+  <main class="lobby" id="lobby">
+    <header>
+      <h1>Garage Day</h1>
+      <p>Accueille les clients, répare leurs voitures et fais tourner ton garage pendant dix jours.</p>
+    </header>
+    <form id="start-form">
+      <fieldset id="layout-picker">
+        <legend>Choisis ton garage</legend>
+        <div class="layouts">
+          <label class="layout">
+            <input type="radio" name="layout" value="0" checked>
+            <span class="plan" aria-hidden="true"><i></i><b></b></span>
+            <strong>La Traversée</strong><span>1 baie · Bureau au nord</span>
+          </label>
+          <label class="layout">
+            <input type="radio" name="layout" value="1">
+            <span class="plan" aria-hidden="true"><i></i><b></b><b></b></span>
+            <strong>Le Tandem</strong><span>2 baies · Salle commune</span>
+          </label>
+          <label class="layout">
+            <input type="radio" name="layout" value="2">
+            <span class="plan" aria-hidden="true"><i></i><b></b><b></b><b></b></span>
+            <strong>Les Trois Ponts</strong><span>3 baies · Bureau central</span>
+          </label>
+        </div>
+      </fieldset>
+      <div class="actions" id="start-actions">
+        <button class="primary" type="submit">Jouer</button>
+        <button type="button" id="host">Héberger à deux</button>
+        <button type="button" id="resume" hidden>Reprendre comme hôte</button>
+      </div>
+      <div class="actions" id="join-actions" hidden>
+        <button class="primary" type="button" id="join">Rejoindre la partie</button>
+        <a href="./">Retour à l’accueil</a>
+      </div>
+      <p class="note" id="start-note">En ligne, vous partagez la même caméra. La progression est conservée dans le navigateur de l’hôte.</p>
+      <p class="notice" id="notice" role="status"></p>
+    </form>
+    <details open>
+      <summary>Commandes</summary>
+      <table>
+        <thead><tr><th scope="col">Action</th><th scope="col">Clavier</th><th scope="col">Manette Xbox</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Marcher</th><td>W A S D ou flèches</td><td>Stick gauche</td></tr>
+          <tr><th scope="row">Viser</th><td>I J K L</td><td>Stick droit</td></tr>
+          <tr><th scope="row">Interagir · maintenir pour travailler</th><td>F</td><td>A</td></tr>
+          <tr><th scope="row">Prendre ou poser</th><td>E</td><td>Y</td></tr>
+          <tr><th scope="row">Tourner · vider le chariot tracté</th><td>R</td><td>X</td></tr>
+          <tr><th scope="row">Annuler</th><td>Q</td><td>B</td></tr>
+          <tr><th scope="row">Zoom</th><td>− / =</td><td>LB / RB</td></tr>
+          <tr><th scope="row">Conduire</th><td>W / S accélérer · A / D braquer</td><td>Stick gauche ↑ / ↓ · stick droit ← / →</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </main>
+  <section class="game" id="game" hidden aria-label="Garage Day en cours">
+    <iframe id="game-frame" title="Garage Day" allow="autoplay; gamepad; fullscreen" hidden></iframe>
+    <video id="guest-view" autoplay muted playsinline tabindex="0" aria-label="Écran partagé de l’hôte" hidden></video>
+    <div class="room" id="room" hidden>
+      <span id="room-status" role="status"></span>
+      <button id="invite" type="button" hidden>Copier le lien</button>
+      <button id="exit" type="button">Quitter</button>
+      <input id="invite-url" type="url" aria-label="Lien d’invitation" readonly hidden>
+    </div>
+  </section>
+</body>
+</html>

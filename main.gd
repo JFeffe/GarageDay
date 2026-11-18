@@ -1,6 +1,8 @@
 extends Node3D
 
 const SYMBOL_FONT := preload("res://assets/fonts/NotoSansSymbols2-Regular.ttf")
+const HostSave := preload("res://host_save.gd")
+const Coop := preload("res://workshop_coop.gd")
 const BINDINGS := {
 	"reset": [KEY_F9, JOY_BUTTON_BACK],
 	"take": [KEY_E, JOY_BUTTON_Y],
@@ -13,6 +15,10 @@ const BINDINGS := {
 
 var player_visual = preload("res://player_visual.gd").new()
 var workshop = preload("res://workshop.gd").new()
+var web_room: JavaScriptObject
+var hosting := false
+var save_elapsed := 0.0
+var last_checkpoint := ""
 @onready var avatar: Node3D = $Player
 @onready var camera: Camera3D = $Camera
 
@@ -35,10 +41,43 @@ func _ready() -> void:
 		button.button_index = BINDINGS[action][1]
 		InputMap.action_add_event(action,button)
 	player_visual.build(self,avatar)
-	workshop.setup(self)
+	var initial_layout := 0
+	var checkpoint := ""
+	if OS.has_feature("web"):
+		web_room = JavaScriptBridge.get_interface("window").parent.GarageDay
+		if web_room!=null:
+			var launch: Variant = JSON.parse_string(web_room.startInfo())
+			if launch is Dictionary:
+				initial_layout = clampi(int(launch.get("layout",0)),0,2)
+				hosting = launch.get("mode")=="host"
+				if hosting:
+					workshop.coop = Coop.new()
+					checkpoint = str(launch.get("save",""))
+	workshop.setup(self,initial_layout)
+	if hosting and checkpoint!="":
+		if HostSave.restore(workshop,checkpoint): last_checkpoint = checkpoint
+		else: workshop.inform("La sauvegarde n’a pas pu être relue.")
+	if web_room!=null: web_room.gameReady()
+	store_checkpoint()
 
 func _physics_process(dt: float) -> void:
+	if hosting:
+		var controls: Variant = JSON.parse_string(web_room.guestInput())
+		workshop.guest_input = controls if controls is Array else []
 	workshop.tick(dt)
+	if hosting:
+		save_elapsed += dt
+		if save_elapsed>=0.8:
+			save_elapsed = 0.0
+			store_checkpoint()
+
+func store_checkpoint() -> void:
+	if not hosting or workshop.relocating!="": return
+	if workshop.run.mode not in ["open","lost","won"]: return
+	var data := HostSave.capture(workshop) if workshop.run.mode=="open" else ""
+	if data==last_checkpoint: return
+	web_room.storeSave(data)
+	last_checkpoint = data
 
 func box(parent: Node3D, size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
 	var node := MeshInstance3D.new()

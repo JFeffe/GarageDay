@@ -74,6 +74,8 @@ func run_test() -> void:
 	check_checkout_queue(w)
 	check_waiting_room_purchases(w)
 	check_arrival_cutoff(w)
+	check_host_checkpoint(w)
+	check_guest_worker(w)
 	w.build(2)
 	var s = w.site
 	var phone: Vector2 = s.station_point("phone")
@@ -287,6 +289,59 @@ func run_test() -> void:
 	game.queue_free()
 	await process_frame
 	quit(0 if failures.is_empty() else 1)
+
+func check_host_checkpoint(w) -> void:
+	const Checkpoint := preload("res://host_save.gd")
+	w.build(1)
+	w.run.day = 3
+	w.run.cash = 112
+	w.run.purchases = {"vending":true,"lift":true}
+	w.run.next_day_services = {"advertising":true}
+	w.run.vendor_offers.assign([w.Catalog.VENDOR_OFFERS[0]])
+	w.run.vendor_day = 3
+	w.site.make_station("vending","Distributrice",Vector2i(5,6),Color("#92bfb0"),1.23)
+	w.site.move_station("vending",Vector2i(5,6),2)
+	w.site.move_station("counter_0",Vector2i(9,5),1)
+	w.set_held("ratchet",-1,3)
+	w.cart_count = 2
+	w.cart_kind = "new_tire"
+	var checkpoint := Checkpoint.capture(w)
+	w.build(0)
+	check(not Checkpoint.restore(w,""),"Une sauvegarde vide ne doit pas changer la partie")
+	check(Checkpoint.restore(w,checkpoint),"La sauvegarde de l’hôte doit être relue")
+	check(w.layout==1 and w.run.day==3 and w.run.cash==112 and w.run.mode=="open",
+		"La reprise doit restaurer le garage, le jour et la caisse")
+	check(w.site.stations.get("vending",{}).get("turn")==2 and w.site.stations.counter_0.tile==Vector2i(9,5)
+		and w.site.stations.counter_0.turn==1 and w.held=="ratchet" and w.held_turn==3
+		and w.cart_count==2 and w.cart_kind=="new_tire","L’équipement et son orientation doivent être conservés")
+	check(w.run.next_day_services.has("advertising") and w.run.vendor_offers.size()==1 and w.site.van.visible,
+		"Les améliorations et les offres du soir doivent être reprises")
+
+func check_guest_worker(w) -> void:
+	const Coop := preload("res://workshop_coop.gd")
+	w.build(0)
+	w.coop = Coop.new()
+	w.run.start()
+	var host_position: Vector2 = w.player
+	var host_avatar: Node3D = w.game.avatar
+	w.coop.tick(w,0.1,[true,1.0,0.0,1.0,0.0,0,0])
+	check(w.coop.guest.player.x>4.5 and w.player==host_position and w.game.avatar==host_avatar,
+		"J2 doit se déplacer indépendamment de l’hôte")
+	var tool: Vector2 = w.site.station_point("tool_pressure")
+	w.coop.guest.player = tool+Vector2.DOWN
+	w.coop.guest.facing = Vector2.UP
+	w.coop.guest.velocity = Vector2.ZERO
+	w.coop.tick(w,0.1,[true,0.0,0.0,0.0,-1.0,Coop.USE,Coop.USE])
+	check(not w.coop.guest.action.is_empty() and not w.coop.allows(w.target("surface","Manomètre",tool,0.36)),
+		"Un poste utilisé par J2 doit être réservé pendant l’action")
+	w.coop.tick(w,0.3,[true,0.0,0.0,0.0,-1.0,Coop.USE,0])
+	check(w.coop.guest.held=="pressure" and w.held=="" and not w.site.stations.tool_pressure.has("top"),
+		"J2 doit pouvoir prendre un outil avec son propre inventaire")
+	w.coop.tick(w,0.016,[false,0.0,0.0,0.0,0.0,0,0])
+	w.coop.take_rescued_item(w)
+	check(w.held=="pressure" and w.coop.guest.held=="","L’hôte doit pouvoir récupérer un outil après une déconnexion")
+	w.coop.reset()
+	w.coop = null
 
 func check_two_bays(w) -> void:
 	w.build(1)

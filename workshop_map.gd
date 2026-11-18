@@ -506,7 +506,7 @@ func lift_moving(bay: Dictionary) -> bool:
 	var goal := LIFT_TRAVEL if bay.lift_raised else 0.0
 	return not is_equal_approx(bay.lift_height,goal)
 
-func animate_bays(dt: float, active_action: Dictionary) -> void:
+func animate_bays(dt: float, active_action: Dictionary, partner_action: Dictionary = {}) -> void:
 	for i in range(bays.size()):
 		var bay := bays[i]
 		var previous_height: float = bay.lift_height
@@ -519,6 +519,7 @@ func animate_bays(dt: float, active_action: Dictionary) -> void:
 		var approach := 1.0-smoothstep(0.08,0.95,vehicle_position(bay).distance_to(bay.at))
 		bay.car.position.y = 0.12*approach+bay.lift_height
 		var active := str(active_action.get("id","")) if active_action.get("bay",-1)==i else ""
+		if active=="" and partner_action.get("bay",-1)==i: active = str(partner_action.get("id",""))
 		var hood_open: bool = bay.status=="parked" and active in Catalog.HOOD_ACTIONS
 		bay.hood.rotation.x = move_toward(bay.hood.rotation.x,-1.19 if hood_open else 0.0,dt*2.9)
 		if bay.get("light_timer",0.0)>0.0:
@@ -563,8 +564,9 @@ func build_personnel_door(left: float, right: float) -> void:
 	game.box(self,Vector3(width,0.022,0.36),Vector3(area.get_center().x,0.058,area.get_center().y),Color("#728e85"))
 	sign_at("PORTE PIÉTONNE",Vector2(area.get_center().x,17.56),Color("#fff0cf"))
 
-func animate_personnel_door(player: Vector2, dt: float) -> void:
-	var near := SHOP_PERSONNEL_DOOR.grow_individual(0.10,0.95,0.10,0.95).has_point(player)
+func animate_personnel_door(player: Vector2, dt: float, partner := Vector2.INF) -> void:
+	var approach := SHOP_PERSONNEL_DOOR.grow_individual(0.10,0.95,0.10,0.95)
+	var near := approach.has_point(player) or approach.has_point(partner)
 	personnel_door.rotation.y = move_toward(personnel_door.rotation.y,-PI/2 if near else 0.0,dt*8.0)
 
 func make_visitor(at: Vector2, color: Color) -> Dictionary:

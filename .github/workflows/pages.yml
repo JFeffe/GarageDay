@@ -69,7 +69,9 @@ jobs:
           for extension in html js pck wasm; do
             test -s "build/web/$build_name.$extension"
           done
-          mv "build/web/$build_name.html" build/web/index.html
+          sed -e "s/__GAME_URL__/$build_name.html/g" -e "s/__BUILD__/$GITHUB_SHA/g" web/index.html > build/web/index.html
+          cp web/lobby.css web/lobby.js build/web/
+          cp -R web/vendor build/web/
 
       - name: Upload the game to GitHub Pages
         uses: actions/upload-pages-artifact@v4

@@ -74,11 +74,13 @@ var parked_cars: Dictionary = {}
 var incoming_driver := -1
 var departures: Dictionary = {}
 var road_customer := -1
+var coop
+var guest_input: Array = []
 
-func setup(g: Node3D) -> void:
+func setup(g: Node3D, initial_layout := 0) -> void:
 	game = g
 	setup_ui()
-	build(0)
+	build(initial_layout)
 
 func setup_ui() -> void:
 	ui = CanvasLayer.new()
@@ -275,6 +277,7 @@ func menu_dismissed() -> void:
 	menu.hide()
 
 func build(index: int) -> void:
+	if coop!=null: coop.reset()
 	cancel_action()
 	repair_pose.release = 0.0
 	engine.stop()
@@ -385,6 +388,7 @@ func update_stack(stack: Dictionary, parent: Node3D, at: Vector3) -> void:
 	stack.visual = visual
 
 func refresh_cart() -> void:
+	if coop!=null and coop.processing_guest: return
 	site.parked_cart.visible = not pulling_cart
 	rolling_cart.visible = pulling_cart
 	var p: Vector2 = site.center(site.cart_cell)
@@ -672,6 +676,9 @@ func repair_targets(index: int, decline: bool = false) -> Array[Dictionary]:
 
 func candidates(decline: bool) -> Array[Dictionary]:
 	var list: Array[Dictionary] = []
+	if coop!=null and not coop.processing_guest:
+		var recover: Dictionary = coop.rescue_item(self)
+		if not recover.is_empty(): list.append(recover)
 	for id in site.stations:
 		var p: Vector2 = site.station_point(id)
 		if player.distance_squared_to(p)>7: continue
@@ -785,6 +792,7 @@ func context(decline := false) -> Dictionary:
 	var best := {}
 	var score := INF
 	for option in candidates(decline):
+		if coop!=null and not coop.allows(option): continue
 		var p: Vector2 = option.at
 		var distance := player.distance_to(p)
 		if distance>1.96: continue
@@ -836,6 +844,7 @@ func cancel_action() -> void:
 func finish_action(a: Dictionary) -> void:
 	match a.id:
 		"start":
+			game.store_checkpoint()
 			if run.start():
 				update_lift_speed()
 				save_day_setup()
@@ -859,6 +868,8 @@ func finish_action(a: Dictionary) -> void:
 		"return_cart_stock": return_cart_stock()
 		"surface": exchange_surface(a.station)
 		"floor_pick": pick_stack(a.tile,false)
+		"rescue_item":
+			if coop!=null: coop.take_rescued_item(self)
 		"cart_stack": pick_stack(a.tile,true)
 		"cart":
 			site.cells.erase(site.cart_cell)
@@ -1034,6 +1045,9 @@ func stack_contents(stack: Dictionary) -> Dictionary:
 	return {"item":stack.item,"count":stack.count,"origin":stack.origin,"turn":stack.get("turn",-1)}
 
 func save_day_setup() -> void:
+	day_setup = equipment_snapshot()
+
+func equipment_snapshot() -> Dictionary:
 	var surfaces := {}
 	for id in site.stations:
 		var top: Dictionary = site.stations[id].get("top",{})
@@ -1042,7 +1056,7 @@ func save_day_setup() -> void:
 	for tile in site.cells:
 		var entry: Dictionary = site.cells[tile]
 		if entry.kind=="stack": floor_stacks[tile] = stack_contents(entry)
-	day_setup = {"surfaces":surfaces,"floor_stacks":floor_stacks,"cart_cell":site.cart_cell,
+	return {"surfaces":surfaces,"floor_stacks":floor_stacks,"cart_cell":site.cart_cell,
 		"cart_kind":cart_kind,"cart_count":cart_count,"cart_turn":cart_turn,"pulling_cart":pulling_cart,
 		"held":held,"held_origin":held_origin,"held_turn":held_turn}
 
@@ -1103,6 +1117,7 @@ func can_drop(tile: Vector2i,id: String) -> bool:
 	var furniture := id==relocating and relocating!=""
 	if furniture: footprint = Rect2(site.station_footprint(id,tile,relocating_turn))
 	if footprint.grow(Map.PLAYER_RADIUS+0.015).has_point(player): return false
+	if coop!=null and coop.blocks_placement(footprint.grow(Map.PLAYER_RADIUS+0.015)): return false
 	if not site.can_see(player,point): return false
 	if furniture:
 		for occupied in site.station_tiles(id,tile,relocating_turn):
@@ -1323,6 +1338,7 @@ func curve_heading(curve: Curve2D, distance: float, reversing := false) -> float
 	return atan2(tangent.x,tangent.y)
 
 func move_traffic_vehicle(holder: Dictionary, next: Vector2, yaw: float) -> bool:
+	if coop!=null and coop.blocks_vehicle(next,yaw,Map.CAR_HALF,Map.PLAYER_RADIUS): return false
 	var local_player := (player-next).rotated(yaw).abs()
 	if local_player.x<Map.CAR_HALF.x+Map.PLAYER_RADIUS and local_player.y<Map.CAR_HALF.y+Map.PLAYER_RADIUS:
 		return false
@@ -1420,16 +1436,20 @@ func drive_step(bay: Dictionary, travel: float, turn: float, dt: float, assist: 
 	var next := point+Vector2(sin(yaw),cos(yaw))*travel
 	if guide>0.0:
 		next.x = move_toward(next.x,destination.x,absf(travel)*0.86*guide)
-	if site.vehicle_can_move(bay,next,yaw):
+	if can_drive_to(bay,next,yaw):
 		apply_vehicle_pose(bay,next,yaw)
 		return true
 	if absf(travel)>0.001 and (guide>0.0 or not is_equal_approx(yaw,old_yaw)):
 		var straight := point+Vector2(sin(old_yaw),cos(old_yaw))*travel
-		if site.vehicle_can_move(bay,straight,old_yaw):
+		if can_drive_to(bay,straight,old_yaw):
 			apply_vehicle_pose(bay,straight,old_yaw)
 			return true
-	if site.vehicle_can_move(bay,point,yaw): apply_vehicle_pose(bay,point,yaw)
+	if can_drive_to(bay,point,yaw): apply_vehicle_pose(bay,point,yaw)
 	return false
+
+func can_drive_to(bay: Dictionary, point: Vector2, yaw: float) -> bool:
+	if coop!=null and coop.blocks_vehicle(point,yaw,Map.CAR_HALF,Map.PLAYER_RADIUS): return false
+	return site.vehicle_can_move(bay,point,yaw)
 
 func apply_vehicle_pose(bay: Dictionary, point: Vector2, yaw: float) -> void:
 	bay.car.position.x = point.x
@@ -1984,6 +2004,7 @@ func tick(dt: float) -> void:
 		if not guarantee_was_used and run.guarantee_used:
 			inform("Garantie d’accueil · une demi-étoile préservée.")
 		if run.mode in ["open","lost","won"] and run.mode!=was:
+			if coop!=null: coop.reset()
 			cancel_action()
 			engine.stop()
 			if run.mode in ["open","won"]:
@@ -1995,9 +2016,11 @@ func tick(dt: float) -> void:
 				update_camera(1)
 				update_hud()
 			show_summary()
+			game.store_checkpoint()
 			return
 		advance_cars(dt)
 		refresh_visitors(dt)
+	if coop!=null: coop.tick(self,dt,guest_input)
 	if driven_bay>=0:
 		if run.mode not in ["lost","won"]:
 			drive_vehicle(driving_input(),dt,Input.is_action_pressed("rotate_item"))
@@ -2030,8 +2053,8 @@ func tick(dt: float) -> void:
 func update_view(dt: float, speed: float) -> void:
 	if Input.is_action_just_pressed("zoom_in"): change_zoom(1)
 	if Input.is_action_just_pressed("zoom_out"): change_zoom(-1)
-	site.animate_bays(dt,action)
-	site.animate_personnel_door(player,dt)
+	site.animate_bays(dt,action,coop.guest.get("action",{}) if coop!=null else {})
+	site.animate_personnel_door(player,dt,coop.guest.player if coop!=null and coop.online and not coop.guest.is_empty() else Vector2.INF)
 	sync_player(dt,speed)
 	update_camera(minf(dt*7,1))
 	update_hud()
@@ -2068,6 +2091,9 @@ func move_player(dt: float) -> void:
 	if not pads.is_empty():
 		var right := Vector2(Input.get_joy_axis(pads[0],JOY_AXIS_RIGHT_X),Input.get_joy_axis(pads[0],JOY_AXIS_RIGHT_Y))
 		if right.length()>0.26: aim = right
+	walk_with_input(dt,move,aim)
+
+func walk_with_input(dt: float, move: Vector2, aim: Vector2) -> void:
 	if move.length()>0.2: office_seated = false
 	move = move.rotated(-game.camera.rotation.y)
 	aim = aim.rotated(-game.camera.rotation.y)
@@ -2131,6 +2157,13 @@ func update_camera(blend: float) -> void:
 		var bay_center: Vector2 = site.bays[action.bay].at
 		if bay_center.distance_squared_to(action.at)<9.0:
 			center = center.lerp(bay_center,0.33)
+	if coop!=null and coop.online and not coop.guest.is_empty() and (zoom!=0 or driven_bay>=0):
+		var partner: Vector2 = coop.guest.player
+		var separation := (center-partner).abs()
+		var viewport: Vector2 = game.get_viewport().get_visible_rect().size
+		var aspect := viewport.x/maxf(1.0,viewport.y)
+		view_size = maxf(view_size,maxf(separation.x/maxf(0.1,aspect),separation.y*absf(sin(angles.x)))+4.0)
+		center = center.lerp(partner,0.5)
 	game.camera.rotation_degrees = game.camera.rotation_degrees.lerp(rotation,blend)
 	game.camera.position = game.camera.position.lerp(Vector3(center.x,0,center.y)+offset,blend)
 	game.camera.size = lerpf(game.camera.size,view_size,blend)
