@@ -179,6 +179,7 @@ func build(g: Node3D, layout_index: int) -> void:
 	build_vendor()
 	Neighborhood.dress_shop(self)
 	bearing_audio = AudioStreamPlayer.new()
+	if game.hosting: bearing_audio.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	bearing_audio.volume_db = -11.0
 	add_child(bearing_audio)
 	bearing_clips = [bearing_clip(false),bearing_clip(true)]
@@ -342,14 +343,17 @@ func build_placement_guide(area: Rect2, show_arrow := false) -> Dictionary:
 	guide.hide()
 	return {"root":guide,"material":material}
 
-func show_placement_guide(index: int, at_lift: bool, ready: bool) -> void:
+func show_placement_guide(index: int, at_lift: bool, ready: bool, partner: Dictionary = {}) -> void:
 	for i in range(bays.size()):
 		var bay := bays[i]
-		bay.intake_guide.root.visible = index==i and at_lift
-		bay.parking_guide.root.visible = index==i and not at_lift
-		if index==i:
-			var guide: Dictionary = bay.intake_guide if at_lift else bay.parking_guide
-			guide.material.albedo_color = PLACEMENT_READY_COLOR if ready else PLACEMENT_GUIDE_COLOR
+		var partner_here: bool = partner.get("index",-1)==i
+		for lifting in [true,false]:
+			var guide: Dictionary = bay.intake_guide if lifting else bay.parking_guide
+			var local_guide: bool = index==i and at_lift==lifting
+			var guest_guide: bool = partner_here and partner.lifting==lifting
+			guide.root.visible = local_guide or guest_guide
+			var is_ready: bool = (local_guide and ready) or (guest_guide and partner.ready)
+			guide.material.albedo_color = PLACEMENT_READY_COLOR if is_ready else PLACEMENT_GUIDE_COLOR
 
 func show_intake_car(index: int, view_size: float) -> void:
 	if index<0:

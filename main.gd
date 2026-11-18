@@ -19,6 +19,8 @@ var web_room: JavaScriptObject
 var hosting := false
 var save_elapsed := 0.0
 var last_checkpoint := ""
+var room_audio: AudioEffectCapture
+var room_audio_rate := 0
 @onready var avatar: Node3D = $Player
 @onready var camera: Camera3D = $Camera
 
@@ -53,6 +55,10 @@ func _ready() -> void:
 				if hosting:
 					workshop.coop = Coop.new()
 					checkpoint = str(launch.get("save",""))
+					room_audio = AudioEffectCapture.new()
+					room_audio.buffer_length = 0.15
+					AudioServer.add_bus_effect(0,room_audio)
+					room_audio_rate = int(AudioServer.get_mix_rate())
 	workshop.setup(self,initial_layout)
 	if hosting and checkpoint!="":
 		if HostSave.restore(workshop,checkpoint): last_checkpoint = checkpoint
@@ -66,10 +72,20 @@ func _physics_process(dt: float) -> void:
 		workshop.guest_input = controls if controls is Array else []
 	workshop.tick(dt)
 	if hosting:
+		send_room_audio()
 		save_elapsed += dt
 		if save_elapsed>=0.8:
 			save_elapsed = 0.0
 			store_checkpoint()
+
+func send_room_audio() -> void:
+	var available := room_audio.get_frames_available()
+	if available==0: return
+	if workshop.guest_input.is_empty() or not workshop.guest_input[0]:
+		room_audio.clear_buffer()
+		return
+	var frames := room_audio.get_buffer(available)
+	web_room.gameAudio(Marshalls.raw_to_base64(frames.to_byte_array()),room_audio_rate)
 
 func store_checkpoint() -> void:
 	if not hosting or workshop.relocating!="": return

@@ -2,12 +2,13 @@
 
 const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(el => [el.id, el]));
 const saveKey = "garage-day.host.v1";
-const protocol = 1;
+const protocol = 2;
 const invitation = new URLSearchParams(location.hash.slice(1)).get("join");
 const validRoom = id => /^gd-[0-9a-f]{32}$/.test(id ?? "");
-const openInput = [0, 0, 0, 0, 0];
+const openInput = [0, 0, 0, 0, 0, 0, 0];
 let launch = { mode: "solo", layout: 0, save: "" };
 let peer, channel, call, stream, timeout;
+let gameSound;
 let ready = false;
 let lastInput = openInput;
 let pressed = 0;
@@ -36,6 +37,28 @@ window.GarageDay = {
     pressed = 0;
     return response;
   },
+  gameAudio(encoded, sampleRate) {
+    if (!stream || !gameSound || gameSound.context.state !== "running") return;
+    const { context, destination } = gameSound;
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < bytes.length; i++) bytes[i] = binary.charCodeAt(i);
+    const samples = new Float32Array(bytes.buffer);
+    const buffer = context.createBuffer(2, samples.length / 2, sampleRate);
+    const left = buffer.getChannelData(0);
+    const right = buffer.getChannelData(1);
+    for (let i = 0; i < left.length; i++) {
+      left[i] = samples[i * 2];
+      right[i] = samples[i * 2 + 1];
+    }
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(destination);
+    const now = context.currentTime;
+    if (gameSound.cursor < now || gameSound.cursor > now + .25) gameSound.cursor = now + .045;
+    source.start(gameSound.cursor);
+    gameSound.cursor += buffer.duration;
+  },
   storeSave(data) {
     if (launch.mode !== "host") return;
     try {
@@ -54,6 +77,7 @@ function openGame(mode, layout = 0, save = "") {
   elements.game.hidden = false;
   elements.room.hidden = false;
   elements.invite.hidden = true;
+  elements.sound.hidden = true;
   elements["invite-url"].hidden = true;
   elements["room-status"].textContent = "Chargement…";
   elements["guest-view"].hidden = mode !== "guest";
@@ -66,6 +90,8 @@ function returnHome(message = "") {
   peer = undefined;
   clearTimeout(timeout);
   clearConnection();
+  gameSound?.context.close().catch(() => {});
+  gameSound = undefined;
   oldPeer?.destroy();
   ready = false;
   keys.clear();
@@ -86,6 +112,7 @@ function clearConnection() {
   oldCall?.close();
   stream?.getTracks().forEach(track => track.stop());
   stream = undefined;
+  if (gameSound) gameSound.cursor = 0;
   lastInput = openInput;
   pressed = lastInputAt = 0;
 }
@@ -114,6 +141,12 @@ function hostGame(layout, save = "") {
   try {
     const id = "gd-" + crypto.randomUUID().replaceAll("-", "");
     peer = peerFor(id);
+    const Audio = window.AudioContext || window.webkitAudioContext;
+    if (Audio) {
+      const context = new Audio();
+      gameSound = { context, destination: context.createMediaStreamDestination(), cursor: 0 };
+      context.resume().catch(() => {});
+    }
     openGame("host", layout, save);
     const roomPeer = peer;
     elements["room-status"].textContent = "Création du lien…";
@@ -161,6 +194,7 @@ function shareGame() {
   const canvas = elements["game-frame"].contentDocument?.querySelector("canvas");
   try {
     stream = canvas.captureStream(30);
+    if (gameSound) stream.addTrack(gameSound.destination.stream.getAudioTracks()[0].clone());
     call = peer.call(channel.peer, stream, { metadata: { protocol } });
     const incoming = channel;
     call.on("error", () => loseGuest(incoming));
@@ -197,7 +231,19 @@ function joinGame() {
         clearTimeout(timeout);
         const video = elements["guest-view"];
         video.srcObject = videoStream;
-        video.play().catch(() => { elements["room-status"].textContent = "Clique sur l’écran pour démarrer."; });
+        const hasSound = () => videoStream.getAudioTracks().length > 0;
+        const updateSoundButton = () => {
+          elements.sound.hidden = !hasSound();
+          elements.sound.textContent = video.muted ? "Activer le son" : "Couper le son";
+        };
+        videoStream.addEventListener("addtrack", updateSoundButton);
+        video.muted = !hasSound();
+        updateSoundButton();
+        video.play().catch(() => {
+          video.muted = true;
+          updateSoundButton();
+          video.play().catch(() => { elements["room-status"].textContent = "Clique sur l’écran pour démarrer."; });
+        });
         video.focus();
         elements["room-status"].textContent = "J2 · Écran partagé";
       });
@@ -212,11 +258,11 @@ function joinGame() {
 }
 
 function receiveInput(source, input) {
-  if (source !== channel || !source.open || !Array.isArray(input) || input.length !== 5) return;
+  if (source !== channel || !source.open || !Array.isArray(input) || input.length !== openInput.length) return;
   if (!input.every(Number.isFinite)) return;
   const buttons = input[4] & 15;
   pressed |= buttons & ~lastInput[4];
-  lastInput = [...input.slice(0, 4).map(value => Math.max(-1, Math.min(1, value))), buttons];
+  lastInput = input.map((value, index) => index === 4 ? buttons : Math.max(-1, Math.min(1, value)));
   lastInputAt = performance.now();
 }
 
@@ -234,12 +280,17 @@ function sendInput() {
   const buttons = [["KeyE", 3], ["KeyR", 2], ["KeyF", 0], ["KeyQ", 1]];
   const bits = buttons.reduce((mask, [key, index], i) =>
     mask | (keys.has(key) || pad?.buttons[index]?.pressed ? 1 << i : 0), 0);
+  const keyX = keyAxis(["KeyA", "ArrowLeft"], ["KeyD", "ArrowRight"]);
+  const keyY = keyAxis(["KeyW", "ArrowUp"], ["KeyS", "ArrowDown"]);
+  const drivingWithPad = pad && Math.max(Math.abs(pad.axes[2]), Math.abs(pad.axes[1])) > .16;
   channel.send([
-    axis(0, keyAxis(["KeyA", "ArrowLeft"], ["KeyD", "ArrowRight"]), .2),
-    axis(1, keyAxis(["KeyW", "ArrowUp"], ["KeyS", "ArrowDown"]), .2),
+    axis(0, keyX, .2),
+    axis(1, keyY, .2),
     axis(2, keyAxis(["KeyJ"], ["KeyL"]), .26),
     axis(3, keyAxis(["KeyI"], ["KeyK"]), .26),
     bits,
+    drivingWithPad ? pad.axes[2] : keyX,
+    drivingWithPad ? pad.axes[1] : keyY,
   ]);
 }
 
@@ -270,6 +321,13 @@ elements.host.addEventListener("click", () => {
 elements.resume.addEventListener("click", () => hostGame(0, loadSave()));
 elements.join.addEventListener("click", joinGame);
 elements.exit.addEventListener("click", () => returnHome());
+elements.sound.addEventListener("click", () => {
+  const video = elements["guest-view"];
+  video.muted = !video.muted;
+  elements.sound.textContent = video.muted ? "Activer le son" : "Couper le son";
+  video.play().catch(() => {});
+  video.focus();
+});
 elements["guest-view"].addEventListener("click", () => {
   elements["guest-view"].play().catch(() => {});
   elements["guest-view"].focus();
@@ -292,7 +350,7 @@ elements.resume.hidden = !loadSave();
 if (invitation !== null) {
   elements["start-actions"].hidden = elements["layout-picker"].hidden = true;
   elements["join-actions"].hidden = false;
-  elements["start-note"].textContent = "L’hôte doit garder le jeu ouvert. Vous partagez sa caméra et l’invité joue sans le son.";
+  elements["start-note"].textContent = "L’hôte doit garder le jeu ouvert. Vous partagez la caméra et le son du garage.";
   elements.join.disabled = !validRoom(invitation);
   if (!validRoom(invitation)) elements.notice.textContent = "Ce lien d’invitation est invalide.";
 }

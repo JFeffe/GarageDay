@@ -94,6 +94,7 @@ func setup_ui() -> void:
 	ring.hide()
 	engine = AudioStreamPlayer.new()
 	engine.volume_db = -25.0
+	if game.hosting: engine.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 	engine.stream = engine_loop()
 	ui.add_child(engine)
 	menu = Menu.new()
@@ -942,6 +943,7 @@ func finish_repair(a: Dictionary) -> void:
 		"lift":
 			bay.lift_raised = not bay.lift_raised
 		"drive":
+			if coop!=null and coop.other_drives(a.bay): return
 			if bay.status!="intake": bay.status = "driving"
 			driven_bay = a.bay
 			drive_speed = 0.0
@@ -1383,6 +1385,11 @@ func driving_guide(bay: Dictionary, point: Vector2, yaw: float, destination: Vec
 	var alignment := 1.0-smoothstep(0.48,1.27,off_axis)
 	return proximity*alignment*(1.0-smoothstep(0.32,0.62,heading))
 
+func control_vehicle(input: Vector2, dt: float, braking: bool, park: bool, leave: bool) -> void:
+	drive_vehicle(input,dt,braking)
+	if park: exit_driver_seat(true)
+	elif leave: exit_driver_seat(false)
+
 func drive_vehicle(input: Vector2, dt: float, braking := false) -> void:
 	var bay: Dictionary = site.bays[driven_bay]
 	var throttle := 0.0 if braking else -driving_axis(input.y,1.45)
@@ -1510,7 +1517,7 @@ func parking_placement(bay: Dictionary) -> Dictionary:
 		center = site.bays[slot].parking.get_center()
 		yaw = PI if cos(yaw)<0.0 else 0.0
 	var step := driver_exit_point(center,yaw)
-	if step==Vector2.INF or not site.vehicle_can_move(bay,center,yaw):
+	if step==Vector2.INF or not can_drive_to(bay,center,yaw):
 		return {"status":ParkingStatus.BLOCKED,"slot":slot}
 	return {"status":ParkingStatus.READY,"slot":slot,"center":center,"yaw":yaw,"step":step}
 
@@ -1531,7 +1538,7 @@ func intake_status(bay: Dictionary) -> IntakeStatus:
 	if offset.y>1.0: return IntakeStatus.FORWARD
 	if offset.y<-1.0: return IntakeStatus.BACK
 	if absf(drive_speed)>PARKING_SPEED: return IntakeStatus.SLOW
-	if not site.vehicle_can_move(bay,bay.at,PI) or driver_exit_point(bay.at,PI)==Vector2.INF:
+	if not can_drive_to(bay,bay.at,PI) or driver_exit_point(bay.at,PI)==Vector2.INF:
 		return IntakeStatus.BLOCKED
 	return IntakeStatus.READY
 
@@ -1546,6 +1553,18 @@ func intake_prompt(status: IntakeStatus) -> String:
 		IntakeStatus.SLOW: return "Bien aligné · relâche le stick gauche pour freiner."
 		IntakeStatus.BLOCKED: return "Dégage le pont ou le passage à côté de la voiture."
 	return "Position correcte sur le pont."
+
+func current_drive_guide() -> Dictionary:
+	if driven_bay<0 or run.mode not in ["day","closing"]: return {}
+	var bay: Dictionary = site.bays[driven_bay]
+	if bay.status=="intake":
+		var status := intake_status(bay)
+		var ready := status==IntakeStatus.READY
+		return {"index":driven_bay,"lifting":true,"ready":ready,
+			"prompt":"✓ Y / E valider et descendre" if ready else intake_prompt(status)}
+	var parking := parking_placement(bay)
+	return {"index":parking.slot,"lifting":false,"ready":parking.status==ParkingStatus.READY,
+		"prompt":parking_prompt(parking.status,parking.slot)}
 
 func driver_exit_point(center: Vector2, yaw: float) -> Vector2:
 	var side := Vector2.LEFT.rotated(PI-yaw)
@@ -2023,9 +2042,8 @@ func tick(dt: float) -> void:
 	if coop!=null: coop.tick(self,dt,guest_input)
 	if driven_bay>=0:
 		if run.mode not in ["lost","won"]:
-			drive_vehicle(driving_input(),dt,Input.is_action_pressed("rotate_item"))
-			if Input.is_action_just_pressed("take"): exit_driver_seat(true)
-			elif Input.is_action_just_pressed("cancel_item"): exit_driver_seat(false)
+			control_vehicle(driving_input(),dt,Input.is_action_pressed("rotate_item"),
+				Input.is_action_just_pressed("take"),Input.is_action_just_pressed("cancel_item"))
 		update_view(dt,0.0)
 		return
 	var before := player
@@ -2481,7 +2499,7 @@ func update_hud() -> void:
 		else: instruction = parking_prompt(parking,parking_slot)
 		if guide_ready: instruction_color = "#a5efb9"
 		hint = "Stick gauche ↑ avancer · ↓ freiner / reculer  |  Stick droit ← → braquer"
-	site.show_placement_guide(driven_bay if placing else parking_slot,placing,guide_ready)
+	site.show_placement_guide(driven_bay if placing else parking_slot,placing,guide_ready,coop.guide if coop!=null else {})
 	site.show_waiting_parking(game.camera.size,run.mode in ["day","closing"])
 	var marked_bay := -1
 	if driven_bay<0 and run.mode not in ["lost","won"] and not accepted_intakes.is_empty():

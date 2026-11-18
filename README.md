@@ -6,7 +6,7 @@ Garage Day est un jeu de gestion de garage miniature à jouer à la manette ou a
 
 ## Jouer à deux dans le navigateur
 
-Choisis un garage et clique sur **Héberger à deux**. Copie le lien dans la barre de la partie et transmets-le à ton invité. L’hôte garde son onglet ouvert. Vous partagez la caméra. L’invité peut accueillir, réparer, utiliser les comptoirs et encaisser. L’hôte conduit, choisit les pièces au rayon et gère le chariot, l’aménagement et les menus.
+Choisis un garage et clique sur **Héberger à deux**. Copie le lien dans la barre de la partie et transmets-le à ton invité. L’hôte garde son onglet ouvert. Vous partagez la caméra et le son du garage. Les deux joueurs peuvent conduire, accueillir, réparer et encaisser. L’hôte choisit les pièces au rayon et gère le chariot, l’aménagement et les menus. L’invité peut régler le son dans la barre du jeu.
 
 La partie hébergée est sauvegardée dans le navigateur de l’hôte en atelier libre et avant l’ouverture. **Reprendre comme hôte** permet de reprendre cette sauvegarde avec un nouveau lien. Une interruption pendant le service ramène au début de ce service. Le partage transmet l’image du jeu à l’invité. La connexion WebRTC est négociée via PeerServer Cloud et dépend du réseau des deux joueurs. [Documentation PeerJS](https://peerjs.com/client/getting-started) · [Licence MIT](web/vendor/LICENSE)
 

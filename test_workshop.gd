@@ -76,6 +76,7 @@ func run_test() -> void:
 	check_arrival_cutoff(w)
 	check_host_checkpoint(w)
 	check_guest_worker(w)
+	check_guest_driving(w)
 	w.build(2)
 	var s = w.site
 	var phone: Vector2 = s.station_point("phone")
@@ -324,22 +325,85 @@ func check_guest_worker(w) -> void:
 	w.run.start()
 	var host_position: Vector2 = w.player
 	var host_avatar: Node3D = w.game.avatar
-	w.coop.tick(w,0.1,[true,1.0,0.0,1.0,0.0,0,0])
+	w.coop.tick(w,0.1,[true,1.0,0.0,1.0,0.0,0,0.0,0.0,0])
 	check(w.coop.guest.player.x>4.5 and w.player==host_position and w.game.avatar==host_avatar,
 		"J2 doit se déplacer indépendamment de l’hôte")
 	var tool: Vector2 = w.site.station_point("tool_pressure")
 	w.coop.guest.player = tool+Vector2.DOWN
 	w.coop.guest.facing = Vector2.UP
 	w.coop.guest.velocity = Vector2.ZERO
-	w.coop.tick(w,0.1,[true,0.0,0.0,0.0,-1.0,Coop.USE,Coop.USE])
+	w.coop.tick(w,0.1,[true,0.0,0.0,0.0,-1.0,Coop.USE,0.0,0.0,Coop.USE])
 	check(not w.coop.guest.action.is_empty() and not w.coop.allows(w.target("surface","Manomètre",tool,0.36)),
 		"Un poste utilisé par J2 doit être réservé pendant l’action")
-	w.coop.tick(w,0.3,[true,0.0,0.0,0.0,-1.0,Coop.USE,0])
+	w.coop.tick(w,0.3,[true,0.0,0.0,0.0,-1.0,Coop.USE,0.0,0.0,0])
 	check(w.coop.guest.held=="pressure" and w.held=="" and not w.site.stations.tool_pressure.has("top"),
 		"J2 doit pouvoir prendre un outil avec son propre inventaire")
-	w.coop.tick(w,0.016,[false,0.0,0.0,0.0,0.0,0,0])
+	w.coop.tick(w,0.016,[false,0.0,0.0,0.0,0.0,0,0.0,0.0,0])
 	w.coop.take_rescued_item(w)
 	check(w.held=="pressure" and w.coop.guest.held=="","L’hôte doit pouvoir récupérer un outil après une déconnexion")
+	w.coop.reset()
+	w.coop = null
+
+func check_guest_driving(w) -> void:
+	const Coop := preload("res://workshop_coop.gd")
+	w.build(1)
+	w.run.start()
+	var site = w.site
+	for i in range(site.bays.size()):
+		var bay: Dictionary = site.bays[i]
+		var order: Dictionary = w.run.new_order()
+		order.required.assign(["pressure"])
+		bay.order = order
+		bay.status = "intake"
+		bay.arrival_slot = i
+		site.spawn_car(bay,order,bay.at,PI)
+	w.coop = Coop.new()
+	var host_bay: Dictionary = site.bays[0]
+	var guest_bay: Dictionary = site.bays[1]
+	var host_engine: AudioStreamPlayer = w.engine
+	w.finish_repair(w.driver_action(host_bay,0))
+	w.coop.tick(w,0.016,[true,0.0,0.0,0.0,0.0,0,0.0,0.0,0])
+
+	var door: Vector2 = w.driver_door(host_bay)
+	w.coop.guest.player = door-Vector2.RIGHT*0.4
+	w.coop.guest.facing = Vector2.RIGHT
+	w.coop.tick(w,0.016,[true,0.0,0.0,1.0,0.0,Coop.USE,0.0,0.0,Coop.USE])
+	check(w.coop.guest.driven_bay==-1 and w.driven_bay==0,"J2 ne doit pas prendre le volant déjà occupé")
+
+	door = w.driver_door(guest_bay)
+	w.coop.guest.player = door-Vector2.RIGHT*0.4
+	w.coop.guest.facing = Vector2.RIGHT
+	w.coop.tick(w,0.016,[true,0.0,0.0,1.0,0.0,Coop.USE,0.0,0.0,Coop.USE])
+	check(w.coop.guest.driven_bay==1 and w.driven_bay==0 and not w.coop.avatar.visible
+		and w.coop.guest.engine!=host_engine and w.engine==host_engine,
+		"Les deux conducteurs doivent avoir chacun leur voiture et leur moteur")
+	if w.coop.guest.driven_bay!=1:
+		w.coop.reset()
+		w.coop = null
+		return
+	var before: Vector2 = site.vehicle_position(guest_bay)
+	var host_before: Vector2 = site.vehicle_position(host_bay)
+	w.coop.tick(w,0.1,[true,0.0,0.0,0.0,0.0,0,0.0,-1.0,0])
+	check(site.vehicle_position(guest_bay).y<before.y and site.vehicle_position(host_bay)==host_before,
+		"L’accélération de J2 doit déplacer sa voiture seule")
+	w.coop.tick(w,0.25,[true,0.0,0.0,0.0,0.0,0,0.0,0.0,0])
+	w.update_hud()
+	check(w.coop.guide.get("ready",false) and guest_bay.intake_guide.root.visible
+		and guest_bay.intake_guide.material.albedo_color==w.Map.PLACEMENT_READY_COLOR,
+		"J2 doit voir le repère vert sur son pont pendant que l’hôte conduit")
+	w.coop.tick(w,0.016,[true,0.0,0.0,0.0,0.0,Coop.TAKE,0.0,0.0,Coop.TAKE])
+	check(guest_bay.status=="parked" and w.coop.guest.driven_bay==-1 and w.driven_bay==0,
+		"Y doit stationner la voiture de J2 et le faire descendre")
+
+	guest_bay.order.done.assign(["pressure"])
+	door = w.driver_door(guest_bay)
+	w.coop.guest.player = door-Vector2.RIGHT*0.4
+	w.coop.guest.facing = Vector2.RIGHT
+	w.coop.tick(w,0.016,[true,0.0,0.0,1.0,0.0,Coop.USE,0.0,0.0,Coop.USE])
+	check(w.coop.guest.driven_bay==1,"J2 doit pouvoir reprendre une voiture réparée pour la sortir")
+	w.coop.tick(w,0.016,[])
+	check(not w.coop.other_drives(1) and guest_bay.status=="driving" and w.driven_bay==0,
+		"Une déconnexion doit laisser la voiture récupérable par l’hôte")
 	w.coop.reset()
 	w.coop = null
 
