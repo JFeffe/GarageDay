@@ -2,7 +2,9 @@
 
 Garage Day est un jeu de gestion de garage miniature à jouer à la manette ou au clavier. Accueille les clients, rentre leurs voitures, répare-les et protège ta réputation pendant dix jours. Entre deux services, réaménage l’atelier et choisis parmi les offres de la fourgonnette.
 
-## Lancer le jeu
+**[Jouer à Garage Day dans le navigateur](https://jfeffe.github.io/GarageDay/)**
+
+## Lancer le jeu dans Godot
 
 1. Importe [project.godot](project.godot) dans le gestionnaire de projets de **Godot 4.5.1**.
 2. Attends la fin de l’import des assets et appuie sur **F5**.

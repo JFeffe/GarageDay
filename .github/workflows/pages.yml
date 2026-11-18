@@ -1,0 +1,87 @@
+name: Publish Garage Day
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: '4.5.1'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache Godot and the Web template
+        id: godot-cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.local/bin/godot
+            ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable/web_nothreads_release.zip
+          key: godot-web-${{ runner.os }}-${{ env.GODOT_VERSION }}
+
+      - name: Install Godot and the Web template
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          version="${GODOT_VERSION}-stable"
+          release="https://github.com/godotengine/godot-builds/releases/download/$version"
+          editor="Godot_v${version}_linux.x86_64"
+          templates="Godot_v${version}_export_templates.tpz"
+          template_dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+
+          cd "$RUNNER_TEMP"
+          curl --fail --location --silent --show-error --retry 3 -O "$release/$editor.zip"
+          curl --fail --location --silent --show-error --retry 3 -O "$release/$templates"
+          sha256sum --check <<CHECKSUMS
+          02ec53d1cc7dbb9cc6355393c61b9ab43d1244751a124f10248a4802830788cd  $editor.zip
+          1998af37f1387684e2c211cdb483daf492fc64dc6b12096bddcdca25b6910c86  $templates
+          CHECKSUMS
+
+          mkdir -p "$HOME/.local/bin" "$template_dir"
+          unzip -p "$editor.zip" "$editor" > "$HOME/.local/bin/godot"
+          chmod +x "$HOME/.local/bin/godot"
+          unzip -p "$templates" 'templates/web_nothreads_release.zip' > "$template_dir/web_nothreads_release.zip"
+          unzip -tq "$template_dir/web_nothreads_release.zip"
+          rm "$editor.zip" "$templates"
+
+      - name: Export Garage Day for the web
+        shell: bash
+        run: |
+          godot="$HOME/.local/bin/godot"
+          "$godot" --headless --editor --import --path .
+          mkdir -p build/web
+          "$godot" --headless --path . --export-release "Web" build/web/index.html
+          for file in index.html index.js index.pck index.wasm; do
+            test -s "build/web/$file"
+          done
+
+      - name: Upload the game to GitHub Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
