@@ -63,10 +63,13 @@ jobs:
           godot="$HOME/.local/bin/godot"
           "$godot" --headless --editor --import --path .
           mkdir -p build/web
-          "$godot" --headless --path . --export-release "Web" build/web/index.html
-          for file in index.html index.js index.pck index.wasm; do
-            test -s "build/web/$file"
+          # Keep the public URL stable while preventing cached files from a previous build.
+          build_name="garage-day-${GITHUB_SHA:0:12}"
+          "$godot" --headless --path . --export-release "Web" "build/web/$build_name.html"
+          for extension in html js pck wasm; do
+            test -s "build/web/$build_name.$extension"
           done
+          mv "build/web/$build_name.html" build/web/index.html
 
       - name: Upload the game to GitHub Pages
         uses: actions/upload-pages-artifact@v4
