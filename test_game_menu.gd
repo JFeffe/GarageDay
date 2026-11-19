@@ -72,6 +72,16 @@ func run_test() -> void:
 	await frames()
 	check(not paused and game.workshop.run.mode=="day" and game.workshop.run.cash==123,"Continuer doit reprendre le service en cours")
 	check(game.workshop.run.elapsed>elapsed,"L’horloge doit reprendre après Continuer")
+	var escape := InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.pressed = true
+	Input.parse_input_event(escape)
+	await process_frame
+	check(paused and menu.screen=="pause","Échap doit ouvrir la pause avec un événement clavier logique")
+	escape.pressed = false
+	Input.parse_input_event(escape)
+	menu.resume_game()
+	await frames()
 	# A workshop sub-menu must survive pause/resume too.
 	game.workshop.show_layouts()
 	start_event(true)

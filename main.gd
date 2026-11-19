@@ -49,7 +49,8 @@ func _ready() -> void:
 		if InputMap.has_action(action): continue
 		InputMap.add_action(action)
 		var key := InputEventKey.new()
-		key.physical_keycode = BINDINGS[action][0]
+		if action=="pause_game": key.keycode = BINDINGS[action][0]
+		else: key.physical_keycode = BINDINGS[action][0]
 		InputMap.action_add_event(action,key)
 		var button := InputEventJoypadButton.new()
 		button.button_index = BINDINGS[action][1]
