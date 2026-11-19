@@ -20,7 +20,11 @@ La partie hébergée est sauvegardée dans le navigateur de l’hôte en atelier
 
 1. Importe [project.godot](project.godot) dans le gestionnaire de projets de **Godot 4.5.1**.
 2. Attends la fin de l’import des assets et appuie sur **F5**.
-3. La partie débute en atelier libre à **La Traversée**. Vise le téléphone du bureau et maintiens **A / F** pour ouvrir le service.
+3. L’accueil propose **Continuer**, **Nouvelle partie**, **Multijoueur**, **Options** et les notes de mise à jour. Choisis un des trois garages pour commencer. Vise le téléphone du bureau et maintiens **A / F** pour ouvrir le service.
+
+**Start / Échap** met le jeu en pause, y compris pendant une réparation ou au volant. Le menu permet de reprendre, de régler les options ou de retourner à l’accueil. **Continuer** reprend exactement la partie tant que le jeu reste ouvert. Après fermeture, la reprise repart du dernier atelier libre sauvegardé, avant le service. Les réglages **Fluide / Équilibré / Qualité** et le compteur d’images par seconde sont conservés sur cet ordinateur. La sauvegarde locale est distincte de celles du navigateur.
+
+Le bouton **Multijoueur** ouvre le mode Web dans le navigateur pour héberger ou rejoindre une partie.
 
 **View / F9** ouvre le menu de nouvelle partie. Tu peux choisir **La Traversée** avec une baie, **Le Tandem** avec deux ou **Les Trois Ponts** avec trois.
 
@@ -28,6 +32,7 @@ La partie hébergée est sauvegardée dans le navigateur de l’hôte en atelier
 
 | Action | Manette Xbox | Clavier |
 | --- | --- | --- |
+| Pause / reprendre | Start | Échap |
 | Marcher et viser | Stick gauche et stick droit | WASD ou flèches, IJKL pour viser |
 | Interagir ou maintenir pour une réparation | A | F |
 | Prendre, poser ou valider le stationnement | Y | E |
@@ -46,6 +51,8 @@ Depuis la racine, avec l’exécutable Godot accessible sous le nom `godot` dans
 ```sh
 godot --headless --editor --import --path .
 godot --headless --path . --script res://test_workshop.gd --quit-after 1100
+godot --headless --path . --script res://test_game_menu.gd
+node test_lobby.cjs
 ```
 
 ## Crédits des assets

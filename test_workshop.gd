@@ -11,11 +11,16 @@ func check(ok: bool, label: String) -> void:
 func run_test() -> void:
 	check_clock()
 	var game = load(ProjectSettings.get_setting("application/run/main_scene")).instantiate()
+	game.local_storage_enabled = false
 	root.add_child(game)
+	check(game.game_menu.screen=="home" and paused,"L’accueil local doit ouvrir avec le garage en pause")
+	game.start_local_game(0)
+	await process_frame
+	await process_frame
 	game.set_physics_process(false)
 	var w = game.workshop
 	check(w.layout==0 and w.site.visible and w.run.mode=="open" and not w.menu.visible
-		and w.header.text.contains("GARAGE DAY"),"Le jeu doit démarrer directement dans La Traversée")
+		and w.header.text.contains("GARAGE DAY"),"La nouvelle partie doit démarrer dans La Traversée")
 	w.request_restart()
 	w.menu_chosen(1)
 	check(w.menu.visible and w.menu.kind=="layout","Choix du garage absent lors d’une nouvelle partie")

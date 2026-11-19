@@ -45,6 +45,18 @@ let settings = loadSettings();
 
 window.GarageDay = {
   startInfo: () => JSON.stringify({ ...launch, ...settings }),
+  setDisplay(quality, showFps) {
+    if (!Object.hasOwn(qualities, quality)) return;
+    settings = { quality, showFps: showFps === true };
+    elements.quality.value = quality;
+    elements["show-fps"].checked = settings.showFps;
+    try { localStorage.setItem(settingsKey, JSON.stringify(settings)); } catch { /* Apply for this tab. */ }
+    updateDisplay();
+  },
+  returnToMenu() {
+    if (launch.mode === "solo") pauseSolo();
+    else returnHome();
+  },
   gameReady(controls) {
     gameControls = controls;
     ready = true;
@@ -479,5 +491,5 @@ elements.invite.addEventListener("click", async () => {
 
 updateDisplay();
 elements.join.disabled = !validRoom(invitation);
-showScreen(invitation === null ? "home" : "invited", false,
+showScreen(invitation === null ? (location.hash === "#multiplayer" ? "multiplayer" : "home") : "invited", false,
   invitation !== null && !validRoom(invitation) ? "Ce lien d’invitation est invalide." : "");

@@ -3,7 +3,9 @@ extends Node3D
 const SYMBOL_FONT := preload("res://assets/fonts/NotoSansSymbols2-Regular.ttf")
 const HostSave := preload("res://host_save.gd")
 const Coop := preload("res://workshop_coop.gd")
+const GameMenu := preload("res://game_menu.gd")
 const BINDINGS := {
+	"pause_game": [KEY_ESCAPE, JOY_BUTTON_START],
 	"reset": [KEY_F9, JOY_BUTTON_BACK],
 	"take": [KEY_E, JOY_BUTTON_Y],
 	"rotate_item": [KEY_R, JOY_BUTTON_X],
@@ -23,6 +25,13 @@ var last_checkpoint := ""
 var fps_elapsed := 0.0
 var room_audio: AudioEffectCapture
 var room_audio_rate := 0
+var game_menu: CanvasLayer
+var session_active := false
+var local_storage_enabled := true
+var local_save_path := "user://solo.save"
+var settings_path := "user://display.cfg"
+var display_quality := "balanced"
+var display_fps := false
 @onready var avatar: Node3D = $Player
 @onready var camera: Camera3D = $Camera
 
@@ -70,7 +79,62 @@ func _ready() -> void:
 	if web_room!=null:
 		web_controls = JavaScriptBridge.create_callback(control_web_game)
 		web_room.gameReady(web_controls)
+	game_menu = GameMenu.new()
+	game_menu.game = self
+	add_child(game_menu)
+	if OS.has_feature("web"):
+		session_active = true
+		store_checkpoint()
+	else:
+		if DisplayServer.get_name()!="headless": DisplayServer.window_set_min_size(Vector2i(960,600))
+		load_display_settings()
+		game_menu.show_home()
+	get_tree().auto_accept_quit = false
+
+func _notification(what: int) -> void:
+	if what==NOTIFICATION_WM_CLOSE_REQUEST:
+		store_checkpoint()
+		get_tree().quit()
+
+func load_display_settings() -> void:
+	var settings := ConfigFile.new()
+	if local_storage_enabled and settings.load(settings_path)==OK:
+		display_quality = str(settings.get_value("display","quality","balanced"))
+		display_fps = bool(settings.get_value("display","show_fps",false))
+	apply_graphics(display_quality,display_fps)
+
+func change_display(quality: String, show_fps: bool) -> void:
+	apply_graphics(quality,show_fps)
+	if web_room!=null:
+		web_room.setDisplay(display_quality,display_fps)
+	elif local_storage_enabled:
+		var settings := ConfigFile.new()
+		settings.set_value("display","quality",display_quality)
+		settings.set_value("display","show_fps",display_fps)
+		if settings.save(settings_path)!=OK:
+			game_menu.show_message("Les options s’appliquent, mais n’ont pas pu être sauvegardées.")
+
+func saved_game() -> String:
+	if not local_storage_enabled or not FileAccess.file_exists(local_save_path): return ""
+	return FileAccess.get_file_as_string(local_save_path)
+
+func start_local_game(layout: int) -> void:
+	workshop.menu.hide()
+	workshop.build(layout)
+	session_active = true
+	last_checkpoint = ""
 	store_checkpoint()
+	game_menu.resume_game()
+
+func continue_local_game() -> void:
+	if not session_active:
+		var checkpoint := saved_game()
+		if not HostSave.restore(workshop,checkpoint):
+			game_menu.show_message("La sauvegarde n’a pas pu être relue. Tu peux lancer une nouvelle partie.")
+			return
+		last_checkpoint = checkpoint
+		session_active = true
+	game_menu.resume_game()
 
 func control_web_game(args: Array) -> void:
 	match args[0]:
@@ -78,10 +142,14 @@ func control_web_game(args: Array) -> void:
 			if hosting: return
 			if args[1]: store_checkpoint()
 			get_tree().paused = bool(args[1])
+			if not args[1] and game_menu!=null: game_menu.resume_game()
 		"graphics":
 			apply_graphics(str(args[1]),bool(args[2]))
 
 func apply_graphics(quality: String, show_fps: bool) -> void:
+	if quality not in ["fast","balanced","high"]: quality = "balanced"
+	display_quality = quality
+	display_fps = show_fps
 	var sun: DirectionalLight3D = $Sun
 	var viewport := get_viewport()
 	sun.shadow_enabled = quality!="fast"
@@ -94,20 +162,20 @@ func _process(dt: float) -> void:
 	fps_elapsed += dt
 	if fps_elapsed>=1.0:
 		fps_elapsed = 0.0
-		web_room.reportFps(Engine.get_frames_per_second())
+		if web_room!=null: web_room.reportFps(Engine.get_frames_per_second())
 
 func _physics_process(dt: float) -> void:
+	if not session_active: return
 	if hosting:
 		var controls: Variant = JSON.parse_string(web_room.guestInput())
 		workshop.guest_input = controls if controls is Array else []
 	workshop.tick(dt)
 	if hosting:
 		send_room_audio()
-	if web_room!=null:
-		save_elapsed += dt
-		if save_elapsed>=0.8:
-			save_elapsed = 0.0
-			store_checkpoint()
+	save_elapsed += dt
+	if save_elapsed>=0.8:
+		save_elapsed = 0.0
+		store_checkpoint()
 
 func send_room_audio() -> void:
 	var available := room_audio.get_frames_available()
@@ -119,11 +187,19 @@ func send_room_audio() -> void:
 	web_room.gameAudio(Marshalls.raw_to_base64(frames.to_byte_array()),room_audio_rate)
 
 func store_checkpoint() -> void:
-	if web_room==null or workshop.relocating!="": return
+	if not session_active or workshop.relocating!="": return
 	if workshop.run.mode not in ["open","lost","won"]: return
 	var data := HostSave.capture(workshop) if workshop.run.mode=="open" else ""
 	if data==last_checkpoint: return
-	web_room.storeSave(data)
+	if web_room!=null:
+		web_room.storeSave(data)
+	elif local_storage_enabled:
+		var file := FileAccess.open(local_save_path,FileAccess.WRITE)
+		if file==null:
+			push_warning("Impossible de sauvegarder la partie locale.")
+			if game_menu!=null: game_menu.show_message("Impossible de sauvegarder la partie sur cet ordinateur.")
+			return
+		file.store_string(data)
 	last_checkpoint = data
 
 func box(parent: Node3D, size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
