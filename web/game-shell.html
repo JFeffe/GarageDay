@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>$GODOT_PROJECT_NAME</title>
+  <style>
+    body { margin: 0; background: #101e20; color: #fff3d9; font: 16px system-ui, sans-serif; overflow: hidden; touch-action: none; }
+    canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+    #loading { position: absolute; inset: 0; display: grid; gap: 1rem; place-content: center; text-align: center; background: #101e20; }
+    progress { width: min(24rem, 75vw); }
+  </style>
+  $GODOT_HEAD_INCLUDE
+</head>
+<body>
+  <canvas id="canvas" tabindex="0" aria-label="Garage Day"></canvas>
+  <div id="loading" role="status">
+    <span>Chargement du garage…</span>
+    <progress aria-label="Chargement"></progress>
+  </div>
+  <noscript>Active JavaScript pour jouer à Garage Day.</noscript>
+  <script src="$GODOT_URL"></script>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const loading = document.getElementById("loading");
+    const progress = loading.querySelector("progress");
+    const pixelLimits = { fast: [960, 600], balanced: [1280, 800], high: [1920, 1200] };
+    let quality = "balanced";
+
+    function sizeCanvas() {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      // Keep the CSS size independent from the number of pixels rendered and streamed.
+      if (!width || !height) return;
+      const [maxWidth, maxHeight] = pixelLimits[quality];
+      const scale = Math.min(devicePixelRatio, maxWidth / width, maxHeight / height);
+      const pixelWidth = Math.max(1, Math.round(width * scale));
+      const pixelHeight = Math.max(1, Math.round(height * scale));
+      if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+      if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+    }
+
+    window.setGarageQuality = value => {
+      if (Object.hasOwn(pixelLimits, value)) quality = value;
+      sizeCanvas();
+    };
+    addEventListener("resize", sizeCanvas);
+    sizeCanvas();
+
+    const engine = new Engine($GODOT_CONFIG);
+    engine.startGame({
+      canvas,
+      canvasResizePolicy: 0,
+      onProgress(current, total) {
+        if (!total) return;
+        progress.max = total;
+        progress.value = current;
+      },
+    }).then(() => loading.remove()).catch(error => {
+      loading.textContent = "Le jeu n’a pas pu démarrer. Vérifie que WebGL 2 est disponible, puis recharge la page.";
+      console.error(error);
+    });
+  </script>
+</body>
+</html>

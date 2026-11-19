@@ -4,9 +4,9 @@ const elements = Object.fromEntries([...document.querySelectorAll("[id]")].map(e
 const saveKeys = { solo: "garage-day.solo.v1", host: "garage-day.host.v1" };
 const settingsKey = "garage-day.display.v1";
 const qualities = {
-  fast: "Résolution 3D réduite et ombres dynamiques désactivées.",
-  balanced: "Résolution 3D légèrement réduite et ombres simplifiées.",
-  high: "Résolution 3D maximale et ombres détaillées.",
+  fast: "Affichage jusqu’à 960 × 600, avec les ombres désactivées.",
+  balanced: "Affichage jusqu’à 1280 × 800, avec des ombres simplifiées.",
+  high: "Affichage jusqu’à 1920 × 1200, avec des ombres détaillées.",
 };
 const protocol = 2;
 let invitation = new URLSearchParams(location.hash.slice(1)).get("join");

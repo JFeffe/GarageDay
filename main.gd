@@ -154,8 +154,16 @@ func apply_graphics(quality: String, show_fps: bool) -> void:
 	var sun: DirectionalLight3D = $Sun
 	var viewport := get_viewport()
 	sun.shadow_enabled = quality!="fast"
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality=="high" else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	if quality=="high":
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	elif OS.has_feature("web"):
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	else:
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	viewport.scaling_3d_scale = 1.0 if quality=="high" else (0.67 if quality=="fast" else 0.85)
+	if OS.has_feature("web"):
+		var browser := JavaScriptBridge.get_interface("window")
+		if browser.setGarageQuality!=null: browser.setGarageQuality(quality)
 	fps_elapsed = 0.0
 	set_process(show_fps)
 

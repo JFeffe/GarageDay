@@ -16,6 +16,7 @@ const CUSTOMER_NEAR := 1.4
 const RECEIPT_SECONDS := 2.2
 const GARAGE_CAMERA_ROTATION := Vector3(-63,0,0)
 const HUD_INTERVAL := 1.0/20.0
+const QUEUE_PATH_INTERVAL := 0.25
 
 enum IntakeStatus { APPROACH, TURN, LEFT, RIGHT, FORWARD, BACK, SLOW, BLOCKED, READY }
 enum ParkingStatus { ALIGN, SLOW, BLOCKED, READY, FULL }
@@ -68,6 +69,9 @@ var repair_pose := RepairPose.new()
 var notice := ""
 var notice_time := 0.0
 var visitors: Dictionary = {}
+var queue_path: Array[Vector2] = []
+var queue_path_head := Vector2.INF
+var queue_path_refresh := 0.0
 var incoming: Dictionary = {}
 var accepted_intakes: Array[int] = []
 var waiting_for_bay: Array[Dictionary] = []
@@ -300,6 +304,9 @@ func build(index: int) -> void:
 	run.intro_brakes = index==0
 	day_setup.clear()
 	visitors.clear()
+	queue_path.clear()
+	queue_path_head = Vector2.INF
+	queue_path_refresh = 0.0
 	incoming.clear()
 	accepted_intakes.clear()
 	waiting_for_bay.clear()
@@ -1782,6 +1789,7 @@ func finish_departure(bay: Dictionary) -> void:
 func arrival_customer(person: Dictionary, arrival: Dictionary, target_point: Vector2, dt: float) -> void:
 	if arrival.stage=="walk":
 		visitor(person,target_point,false,dt)
+		update_visitor_meter(person)
 		return
 	var seat: Vector3 = arrival.car.to_global(Vector3(0.34,0.48,-0.27))
 	var door := driver_door(arrival)
@@ -1816,11 +1824,14 @@ func reception_queue_point(index: int, path: Array[Vector2]) -> Vector2:
 func refresh_visitors(dt: float) -> void:
 	var visible := {}
 	var queue_index := 0
-	var queue_path: Array[Vector2] = []
+	queue_path_refresh = maxf(0.0,queue_path_refresh-dt)
 	for person in run.waiting:
 		if not incoming.has(person.id) or incoming[person.id].stage=="drive": continue
 		if queue_index==1 and site.stations.reception.turn!=0:
-			queue_path = site.walk_path(site.queue_head,site.portal+Vector2.DOWN*1.5)
+			if queue_path_head!=site.queue_head or queue_path_refresh==0.0:
+				queue_path = site.walk_path(site.queue_head,site.portal+Vector2.DOWN*1.5)
+				queue_path_head = site.queue_head
+				queue_path_refresh = QUEUE_PATH_INTERVAL
 		arrival_customer(person,incoming[person.id],reception_queue_point(queue_index,queue_path),dt)
 		visible[person.id] = true
 		queue_index += 1
@@ -1828,9 +1839,7 @@ func refresh_visitors(dt: float) -> void:
 		var places: Array[Vector2] = site.bay_waiting_places()
 		for i in range(waiting_for_bay.size()):
 			var person := waiting_for_bay[i]
-			if not waiting_room_visitor(person,places[i%places.size()],false,dt):
-				var meter: Label3D = visitors[person.id].meter
-				meter.text += "\nAttend une baie"
+			waiting_room_visitor(person,places[i%places.size()],false,dt,0,"Attend une baie")
 			visible[person.id] = true
 	for i in range(site.bays.size()):
 		var bay: Dictionary = site.bays[i]
@@ -1877,16 +1886,15 @@ func service_visitor(holder: Dictionary, point: Vector2, seated: bool, dt: float
 		waiting_room_visitor(order,point,seated,dt,seat_turn)
 	else:
 		visitor(order,point,seated,dt,seat_turn)
+		update_visitor_meter(order,status)
 		visitors[order.id].erase("amenity")
 		visitors[order.id].erase("reading_time")
-	if status!="":
-		var meter: Label3D = visitors[order.id].meter
-		meter.text += "\n"+status
 
-func waiting_room_visitor(order: Dictionary, seat: Vector2, seated: bool, dt: float, seat_turn := 0) -> bool:
+func waiting_room_visitor(order: Dictionary, seat: Vector2, seated: bool, dt: float, seat_turn := 0, status := "") -> void:
 	if not visitors.has(order.id):
 		visitor(order,seat,seated,dt,seat_turn)
-		return false
+		update_visitor_meter(order,status)
+		return
 	var visual: Dictionary = visitors[order.id]
 	var amenity: Dictionary = visual.get("amenity",{})
 	var reading_time := maxf(0.0,visual.get("reading_time",0.0)-dt)
@@ -1909,14 +1917,13 @@ func waiting_room_visitor(order: Dictionary, seat: Vector2, seated: bool, dt: fl
 				visual.retry_amenity = 1.0
 	visual.retry_amenity = maxf(0.0,visual.get("retry_amenity",0.0)-dt)
 	if not amenity.is_empty():
-		if use_waiting_amenity(order,visual,amenity,dt): return true
+		if use_waiting_amenity(order,visual,amenity,dt): return
 		visual.erase("amenity")
 	visitor(order,seat,seated,dt,seat_turn)
 	if reading_time>0.0 and visitor_at(order.id,seat):
 		show_amenity_hands(visual,false,reading_time)
-		visual.meter.text += "\nLit un magazine"
-		return true
-	return false
+		status = "Lit un magazine"
+	update_visitor_meter(order,status)
 
 func use_waiting_amenity(order: Dictionary, visual: Dictionary, amenity: Dictionary, dt: float) -> bool:
 	var snack: bool = amenity.id=="vending"
@@ -1926,7 +1933,9 @@ func use_waiting_amenity(order: Dictionary, visual: Dictionary, amenity: Diction
 			visual.retry_amenity = 1.5
 			return false
 	visitor(order,amenity.at,false,dt)
-	if not visitor_at(order.id,amenity.at): return true
+	if not visitor_at(order.id,amenity.at):
+		update_visitor_meter(order)
+		return true
 	if not amenity.started:
 		amenity.started = true
 		if snack:
@@ -1942,7 +1951,7 @@ func use_waiting_amenity(order: Dictionary, visual: Dictionary, amenity: Diction
 	var point: Vector2 = site.station_point(amenity.id)-amenity.at
 	visual.root.rotation.y = atan2(point.x,point.y)
 	show_amenity_hands(visual,snack,amenity.use)
-	visual.meter.text += "\nSe sert" if snack else "\nPrend un magazine"
+	update_visitor_meter(order,"Se sert" if snack else "Prend un magazine")
 	return true
 
 func show_amenity_hands(visual: Dictionary, snack: bool, phase: float) -> void:
@@ -1982,13 +1991,17 @@ func visitor(person: Dictionary, p: Vector2, seated: bool, dt: float, seat_turn 
 	person.in_waiting_room = site.waiting_area().has_point(Vector2(node.position.x,node.position.z))
 	visual.hands.hide()
 	visual.meter.visible = not departures.has(person.id) and visual.get("receipt_left",0.0)<=0.0
-	if person.paid:
-		visual.meter.text = person.name
-		visual.meter.modulate = Color("#b5efca")
-		return
-	var count := ceili(5.0*person.patience/person.max_patience)
-	visual.meter.text = person.name+"  "+"■".repeat(count)+"□".repeat(5-count)
-	visual.meter.modulate = Color("#ffc192") if count<=2 else Color("#fff0c7")
+
+func update_visitor_meter(person: Dictionary, status := "") -> void:
+	var meter: Label3D = visitors[person.id].meter
+	if not meter.visible: return
+	var count := -1 if person.paid else ceili(5.0*person.patience/person.max_patience)
+	var text: String = person.name
+	if count>=0: text += "  "+"■".repeat(count)+"□".repeat(5-count)
+	if status!="": text += "\n"+status
+	if meter.text!=text: meter.text = text
+	var color := Color("#b5efca") if person.paid else (Color("#ffc192") if count<=2 else Color("#fff0c7"))
+	if meter.modulate!=color: meter.modulate = color
 
 func show_summary() -> void:
 	var rows: Array[String] = []

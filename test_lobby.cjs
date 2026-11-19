@@ -37,4 +37,37 @@ assert.equal(page.elements.game.hidden, true);
 assert.equal(vm.runInContext("paused", page.context), true, "Returning home must preserve the running solo");
 assert.equal(lobby().elements.home.hidden, false);
 assert.equal(lobby("#join=gd-" + "a".repeat(32)).elements.invited.hidden, false);
+
+// The full window remains visible while graphics quality limits the actual pixel buffer.
+const shell = fs.readFileSync(`${__dirname}/web/game-shell.html`, "utf8");
+const script = shell.match(/<script>([\s\S]*?)<\/script>/)[1].replace("$GODOT_CONFIG", "{}");
+const canvas = { clientWidth: 1500, clientHeight: 950 };
+const loading = { querySelector: () => ({}), remove() {} };
+let resize;
+const frame = vm.createContext({
+  window: {}, devicePixelRatio: 2,
+  addEventListener(event, callback) { if (event === "resize") resize = callback; },
+  document: { getElementById: id => id === "canvas" ? canvas : loading },
+  Engine: class {
+    startGame(options) {
+      assert.equal(options.canvasResizePolicy, 0);
+      return Promise.resolve();
+    }
+  },
+});
+vm.runInContext(script, frame);
+assert.deepEqual([canvas.width, canvas.height], [1263, 800]);
+frame.window.setGarageQuality("fast");
+assert.deepEqual([canvas.width, canvas.height], [947, 600]);
+frame.window.setGarageQuality("high");
+assert.deepEqual([canvas.width, canvas.height], [1895, 1200]);
+canvas.clientWidth = 640;
+canvas.clientHeight = 400;
+resize();
+assert.deepEqual([canvas.width, canvas.height], [1280, 800]);
+canvas.clientWidth = 0;
+canvas.clientHeight = 0;
+resize();
+assert.deepEqual([canvas.width, canvas.height], [1280, 800], "Hiding the iframe should preserve its buffer");
+console.log("PASS: capped Web rendering across graphics modes, resize, and hidden iframe.");
 console.log("PASS: multiplayer link, display settings bridge, solo return to home, invitations.");
