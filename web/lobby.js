@@ -5,8 +5,8 @@ const saveKeys = { solo: "garage-day.solo.v1", host: "garage-day.host.v1" };
 const settingsKey = "garage-day.display.v1";
 const qualities = {
   fast: "Affichage jusqu’à 960 × 600, avec les ombres désactivées.",
-  balanced: "Affichage jusqu’à 1280 × 800, avec des ombres simplifiées.",
-  high: "Affichage jusqu’à 1920 × 1200, avec des ombres détaillées.",
+  balanced: "Image nette jusqu’à 1440 × 900 en solo, avec des ombres simplifiées.",
+  high: "Affichage jusqu’à 1920 × 1200, ombres détaillées et contours lissés en solo.",
 };
 const protocol = 2;
 const captureFps = 30;

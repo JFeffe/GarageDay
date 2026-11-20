@@ -124,6 +124,10 @@ const frame = vm.createContext({
 });
 vm.runInContext(script, frame);
 assert.deepEqual([canvas.width, canvas.height], [1263, 800]);
+frame.window.setGarageQuality("balanced", true);
+assert.deepEqual([canvas.width, canvas.height], [1421, 900], "Balanced solo should use the sharper buffer");
+frame.window.setGarageQuality("balanced", false);
+assert.deepEqual([canvas.width, canvas.height], [1263, 800], "Hosting should keep the existing capture size");
 frame.window.setGarageQuality("fast");
 assert.deepEqual([canvas.width, canvas.height], [947, 600]);
 frame.window.setGarageQuality("high");

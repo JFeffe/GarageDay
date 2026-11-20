@@ -6,8 +6,8 @@ const MINT := Color("#8fc6bb")
 const QUALITY_IDS := ["fast","balanced","high"]
 const QUALITY_NAMES := ["Fluide","Équilibré","Qualité"]
 const QUALITY_DETAILS := ["Résolution 3D réduite et ombres désactivées.",
-	"Résolution 3D légèrement réduite et ombres simplifiées.",
-	"Résolution 3D maximale et ombres détaillées."]
+	"Image plus nette en solo et ombres simplifiées.",
+	"Résolution maximale, ombres détaillées et contours lissés en solo."]
 const GARAGE_IMAGES := [preload("res://web/images/traversee.webp"),
 	preload("res://web/images/tandem.webp"),preload("res://web/images/trois-ponts.webp")]
 const HERO := preload("res://web/images/atelier.webp")
@@ -181,7 +181,7 @@ func show_pause() -> void:
 	button(content,"Options",func() -> void: show_options("pause"))
 	button(content,"Retour au menu d’accueil",return_home)
 	if not OS.has_feature("web"): button(content,"Quitter le jeu",quit_game)
-	content.add_child(label("Start / Échap pour reprendre",16,MINT))
+	content.add_child(label("Croix / flèches · A / Entrée choisir · Start / Échap reprendre",16,MINT))
 
 func resume_game() -> void:
 	screen = ""

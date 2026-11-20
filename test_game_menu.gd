@@ -27,11 +27,20 @@ func clean_files() -> void:
 	for path in [save_path,config_path]:
 		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
 
-func start_event(pressed: bool) -> void:
+func pad_event(button_index: int, pressed: bool) -> void:
 	var event := InputEventJoypadButton.new()
-	event.button_index = JOY_BUTTON_START
+	event.button_index = button_index
 	event.pressed = pressed
 	Input.parse_input_event(event)
+
+func start_event(pressed: bool) -> void:
+	pad_event(JOY_BUTTON_START,pressed)
+
+func press_pad(button_index: int) -> void:
+	pad_event(button_index,true)
+	await process_frame
+	pad_event(button_index,false)
+	await process_frame
 
 func run_test() -> void:
 	clean_files()
@@ -39,6 +48,7 @@ func run_test() -> void:
 	var menu = game.game_menu
 	check(paused and menu.screen=="home" and not game.session_active,"Le lancement doit afficher l’accueil et figer le garage")
 	check(game.saved_game().is_empty(),"L’accueil ne doit pas créer ni écraser une sauvegarde")
+	check(is_equal_approx(game.get_viewport().scaling_3d_scale,1.0),"Le mode Équilibré en solo doit conserver toute la résolution 3D")
 	menu.request_new_game()
 	check(menu.screen=="layouts","Sans sauvegarde, Nouvelle partie doit proposer les trois garages")
 	game.start_local_game(1)
@@ -53,6 +63,22 @@ func run_test() -> void:
 	await process_frame
 	start_event(false)
 	check(paused and menu.screen=="pause","Start doit ouvrir la pause")
+	await process_frame
+	await press_pad(JOY_BUTTON_DPAD_DOWN)
+	await press_pad(JOY_BUTTON_A)
+	check(paused and menu.screen=="options","La croix directionnelle et A doivent ouvrir les options depuis la pause")
+	if menu.screen=="options":
+		await press_pad(JOY_BUTTON_A)
+		var popup: PopupMenu = menu.quality_button.get_popup()
+		check(popup.visible,"A doit ouvrir le choix de la qualité graphique")
+		if popup.visible:
+			await press_pad(JOY_BUTTON_DPAD_UP)
+			await press_pad(JOY_BUTTON_A)
+			check(game.display_quality=="fast" and not popup.visible,"A doit valider une qualité dans la liste")
+		await press_pad(JOY_BUTTON_B)
+		check(menu.screen=="pause","B doit ramener des options à la pause")
+	game.apply_graphics("high",false)
+	check(game.get_viewport().msaa_3d==Viewport.MSAA_2X,"Le mode Qualité en solo doit lisser les contours")
 	var elapsed: float = game.workshop.run.elapsed
 	var position: Vector2 = game.workshop.player
 	await create_timer(0.12).timeout

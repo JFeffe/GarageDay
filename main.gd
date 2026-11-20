@@ -55,6 +55,14 @@ func _ready() -> void:
 		var button := InputEventJoypadButton.new()
 		button.button_index = BINDINGS[action][1]
 		InputMap.action_add_event(action,button)
+	# The engine's default GUI actions can omit these gamepad buttons.
+	var menu_buttons := {"ui_accept":JOY_BUTTON_A,"ui_cancel":JOY_BUTTON_B}
+	for action in menu_buttons:
+		var button := InputEventJoypadButton.new()
+		button.device = -1
+		button.button_index = menu_buttons[action]
+		if not InputMap.action_has_event(action,button):
+			InputMap.action_add_event(action,button)
 	player_visual.build(self,avatar)
 	var initial_layout := 0
 	var checkpoint := ""
@@ -160,10 +168,15 @@ func apply_graphics(quality: String, show_fps: bool) -> void:
 		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	else:
 		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	viewport.scaling_3d_scale = 1.0 if quality=="high" else (0.67 if quality=="fast" else 0.85)
+	viewport.scaling_3d_scale = 1.0
+	if quality=="fast":
+		viewport.scaling_3d_scale = 0.67
+	elif quality=="balanced" and hosting:
+		viewport.scaling_3d_scale = 0.85
+	viewport.msaa_3d = Viewport.MSAA_2X if quality=="high" and not hosting else Viewport.MSAA_DISABLED
 	if OS.has_feature("web"):
 		var browser := JavaScriptBridge.get_interface("window")
-		if browser.setGarageQuality!=null: browser.setGarageQuality(quality)
+		if browser.setGarageQuality!=null: browser.setGarageQuality(quality,not hosting)
 	fps_elapsed = 0.0
 	set_process(show_fps)
 

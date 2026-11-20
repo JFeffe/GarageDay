@@ -26,13 +26,14 @@
     const progress = loading.querySelector("progress");
     const pixelLimits = { fast: [960, 600], balanced: [1280, 800], high: [1920, 1200] };
     let quality = "balanced";
+    let solo = false;
 
     function sizeCanvas() {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       // Keep the CSS size independent from the number of pixels rendered and streamed.
       if (!width || !height) return;
-      const [maxWidth, maxHeight] = pixelLimits[quality];
+      const [maxWidth, maxHeight] = solo && quality === "balanced" ? [1440, 900] : pixelLimits[quality];
       const scale = Math.min(devicePixelRatio, maxWidth / width, maxHeight / height);
       const pixelWidth = Math.max(1, Math.round(width * scale));
       const pixelHeight = Math.max(1, Math.round(height * scale));
@@ -40,8 +41,9 @@
       if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
     }
 
-    window.setGarageQuality = value => {
+    window.setGarageQuality = (value, soloMode = false) => {
       if (Object.hasOwn(pixelLimits, value)) quality = value;
+      solo = soloMode;
       sizeCanvas();
     };
     addEventListener("resize", sizeCanvas);
