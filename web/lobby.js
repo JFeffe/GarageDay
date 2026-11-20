@@ -9,11 +9,13 @@ const qualities = {
   high: "Affichage jusqu’à 1920 × 1200, avec des ombres détaillées.",
 };
 const protocol = 2;
+const captureFps = 30;
 let invitation = new URLSearchParams(location.hash.slice(1)).get("join");
 const validRoom = id => /^gd-[0-9a-f]{32}$/.test(id ?? "");
 const openInput = [0, 0, 0, 0, 0, 0, 0];
 let launch = { mode: "solo", layout: 0, save: "" };
 let peer, channel, call, stream, timeout;
+let stopCapturing;
 let gameSound;
 let ready = false;
 let resumable = false;
@@ -215,6 +217,8 @@ function clearConnection() {
   channel = call = undefined;
   oldChannel?.close();
   oldCall?.close();
+  stopCapturing?.();
+  stopCapturing = undefined;
   stream?.getTracks().forEach(track => track.stop());
   stream = undefined;
   if (gameSound) gameSound.cursor = 0;
@@ -299,7 +303,7 @@ function shareGame() {
   if (!channel?.open || call) return;
   const canvas = elements["game-frame"].contentDocument?.querySelector("canvas");
   try {
-    stream = canvas.captureStream(30);
+    stream = captureVideo(canvas);
     if (gameSound) stream.addTrack(gameSound.destination.stream.getAudioTracks()[0].clone());
     call = peer.call(channel.peer, stream, { metadata: { protocol } });
     const incoming = channel;
@@ -309,6 +313,40 @@ function shareGame() {
     loseGuest(channel);
     elements["room-status"].textContent = "Le partage de l’écran du jeu a échoué.";
   }
+}
+
+function captureVideo(canvas) {
+  const view = canvas.ownerDocument.defaultView;
+  let requestId;
+  stopCapturing = () => {
+    if (requestId !== undefined) view.cancelAnimationFrame(requestId);
+    view.setGarageSharing?.(false);
+  };
+  view.setGarageSharing?.(true);
+
+  const video = canvas.captureStream(0);
+  const [track] = video.getVideoTracks();
+  if (typeof track?.requestFrame !== "function") {
+    video.getTracks().forEach(item => item.stop());
+    return canvas.captureStream(captureFps);
+  }
+
+  // A separate capture timer can skip a paint and wait for another timer tick.
+  // Request frames on the game's refresh clock so the next paint can deliver them.
+  const interval = 1000 / captureFps;
+  let nextFrame = view.performance.now();
+  function capture(now) {
+    if (now + 0.6 >= nextFrame) {
+      track.requestFrame();
+      const intervalsElapsed = Math.max(1, Math.floor((now - nextFrame) / interval) + 1);
+      nextFrame += intervalsElapsed * interval;
+    }
+    requestId = view.requestAnimationFrame(capture);
+  }
+
+  if ("contentHint" in track) track.contentHint = "motion";
+  requestId = view.requestAnimationFrame(capture);
+  return video;
 }
 
 function joinGame() {
