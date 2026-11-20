@@ -8,16 +8,20 @@ function lobby(hash = "") {
   const elements = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, {
     id, hidden: false, value: "", checked: false, textContent: "",
     addEventListener() {}, focus() {}, querySelector() { return { focus() {} }; },
+    removeAttribute(name) { delete this[name]; },
   }]));
   const saved = new Map();
+  const tasks = [];
+  const history = [];
   const context = vm.createContext({
-    document: { querySelectorAll: () => Object.values(elements), body: { dataset: {} } },
-    window: {}, location: { hash }, URLSearchParams, URL,
+    document: { querySelectorAll: () => Object.values(elements), body: { dataset: { game: "game.html" } } },
+    window: {}, location: { hash, pathname: "/", search: "" }, URLSearchParams, URL,
+    history: { replaceState(_state, _title, url) { history.push(url); } },
     localStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) },
-    addEventListener() {}, setInterval() {}, clearTimeout() {},
+    addEventListener() {}, setInterval() {}, clearTimeout() {}, setTimeout(callback) { tasks.push(callback); },
   });
   vm.runInContext(fs.readFileSync(`${__dirname}/web/lobby.js`, "utf8"), context);
-  return { context, elements, saved, bridge: context.window.GarageDay };
+  return { context, elements, saved, tasks, history, bridge: context.window.GarageDay };
 }
 
 const page = lobby("#multiplayer");
@@ -30,39 +34,66 @@ assert.deepEqual(JSON.parse(page.saved.get("garage-day.display.v1")), { quality:
 assert.equal(JSON.parse(page.bridge.startInfo()).quality, "fast");
 page.bridge.setDisplay("invalid", false);
 assert.equal(page.elements.quality.value, "fast", "Invalid settings must be ignored");
-vm.runInContext('ready = resumable = true; gameControls = () => {};', page.context);
+vm.runInContext('openGame("solo"); ready = true; gameControls = () => {};', page.context);
 page.bridge.returnToMenu();
+assert.equal(page.elements.game.hidden, false, "The iframe must stay active until Godot's button handler returns");
+page.tasks.shift()();
 assert.equal(page.elements.home.hidden, false, "Returning from a solo pause must show home");
 assert.equal(page.elements.game.hidden, true);
 assert.equal(vm.runInContext("paused", page.context), true, "Returning home must preserve the running solo");
+assert.equal(page.elements.resume.hidden, false, "A running solo can be resumed without a disk checkpoint");
+assert.equal(page.elements["game-frame"].src, "game.html");
+vm.runInContext("continueGame()", page.context);
+assert.equal(page.elements.game.hidden, false, "Continuing should show the existing game");
+
+const host = lobby();
+vm.runInContext('openGame("host"); ready = true;', host.context);
+host.bridge.returnToMenu();
+assert.equal(host.elements["game-frame"].src, "game.html");
+host.tasks.shift()();
+assert.equal(host.elements.home.hidden, false);
+assert.equal(host.elements["game-frame"].src, undefined);
+vm.runInContext('openGame("host"); ready = true;', host.context);
+host.bridge.returnToMenu();
+vm.runInContext('openGame("solo"); ready = true;', host.context);
+host.tasks.shift()();
+assert.equal(host.elements.game.hidden, false, "An old return request must not close a new session");
+
+const inviteHash = "#join=gd-" + "a".repeat(32);
+const guest = lobby(inviteHash);
+vm.runInContext('openGame("guest"); leaveGame();', guest.context);
+assert.equal(guest.elements.home.hidden, false, "An explicit quit should return the guest to the main menu");
+assert.deepEqual(guest.history, ["/"]);
+const disconnected = lobby(inviteHash);
+vm.runInContext('openGame("guest"); returnHome("Connexion interrompue.");', disconnected.context);
+assert.equal(disconnected.elements.invited.hidden, false, "An unexpected disconnect should still let the guest retry");
 assert.equal(lobby().elements.home.hidden, false);
-assert.equal(lobby("#join=gd-" + "a".repeat(32)).elements.invited.hidden, false);
+assert.equal(lobby(inviteHash).elements.invited.hidden, false);
 
 const sharing = lobby();
-const sharingChanges = [];
 let pendingFrame;
 let captureCount = 0;
 let stopped = false;
 let cancelled = false;
 const track = { requestFrame() { captureCount++; }, stop() { stopped = true; } };
 sharing.context.captureCanvas = {
+  width: 1263,
+  height: 800,
   ownerDocument: { defaultView: {
     performance: { now: () => 10 },
-    setGarageSharing: active => sharingChanges.push(active),
     requestAnimationFrame(callback) { pendingFrame = callback; return 42; },
     cancelAnimationFrame(id) { assert.equal(id, 42); pendingFrame = undefined; cancelled = true; },
   } },
   captureStream(rate) {
     assert.equal(rate, 0);
+    assert.deepEqual([this.width, this.height], [1263, 800]);
     return { getVideoTracks: () => [track], getTracks: () => [track] };
   },
 };
 vm.runInContext("stream = captureVideo(captureCanvas)", sharing.context);
 for (const time of [10, 27, 43, 60, 78, 300, 308]) pendingFrame(time);
 assert.equal(captureCount, 4, "Capture should skip extra draws and avoid catch-up bursts");
-assert.deepEqual(sharingChanges, [true]);
 vm.runInContext("clearConnection()", sharing.context);
-assert.deepEqual(sharingChanges, [true, false]);
 assert.ok(stopped && cancelled && !pendingFrame, "Disconnect must release the track and capture loop");
 
 const fallbackRates = [];
@@ -73,7 +104,6 @@ sharing.context.captureCanvas.captureStream = rate => {
 };
 vm.runInContext("stream = captureVideo(captureCanvas); clearConnection()", sharing.context);
 assert.deepEqual(fallbackRates, [0, "stop", 30, "stop"]);
-assert.deepEqual(sharingChanges, [true, false, true, false]);
 
 // The full window remains visible while graphics quality limits the actual pixel buffer.
 const shell = fs.readFileSync(`${__dirname}/web/game-shell.html`, "utf8");
@@ -98,12 +128,6 @@ frame.window.setGarageQuality("fast");
 assert.deepEqual([canvas.width, canvas.height], [947, 600]);
 frame.window.setGarageQuality("high");
 assert.deepEqual([canvas.width, canvas.height], [1895, 1200]);
-frame.window.setGarageSharing(true);
-assert.deepEqual([canvas.width, canvas.height], [947, 600]);
-frame.window.setGarageQuality("balanced");
-assert.deepEqual([canvas.width, canvas.height], [947, 600], "Sharing should keep its cap if quality changes");
-frame.window.setGarageSharing(false);
-assert.deepEqual([canvas.width, canvas.height], [1263, 800], "Disconnect should restore the selected quality");
 canvas.clientWidth = 640;
 canvas.clientHeight = 400;
 resize();

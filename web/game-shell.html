@@ -26,14 +26,13 @@
     const progress = loading.querySelector("progress");
     const pixelLimits = { fast: [960, 600], balanced: [1280, 800], high: [1920, 1200] };
     let quality = "balanced";
-    let sharing = false;
 
     function sizeCanvas() {
       const width = canvas.clientWidth;
       const height = canvas.clientHeight;
       // Keep the CSS size independent from the number of pixels rendered and streamed.
       if (!width || !height) return;
-      const [maxWidth, maxHeight] = sharing ? pixelLimits.fast : pixelLimits[quality];
+      const [maxWidth, maxHeight] = pixelLimits[quality];
       const scale = Math.min(devicePixelRatio, maxWidth / width, maxHeight / height);
       const pixelWidth = Math.max(1, Math.round(width * scale));
       const pixelHeight = Math.max(1, Math.round(height * scale));
@@ -43,10 +42,6 @@
 
     window.setGarageQuality = value => {
       if (Object.hasOwn(pixelLimits, value)) quality = value;
-      sizeCanvas();
-    };
-    window.setGarageSharing = active => {
-      sharing = active;
       sizeCanvas();
     };
     addEventListener("resize", sizeCanvas);

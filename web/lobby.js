@@ -18,7 +18,6 @@ let peer, channel, call, stream, timeout;
 let stopCapturing;
 let gameSound;
 let ready = false;
-let resumable = false;
 let paused = false;
 let gameControls;
 let pickerMode = "solo";
@@ -56,8 +55,12 @@ window.GarageDay = {
     updateDisplay();
   },
   returnToMenu() {
-    if (launch.mode === "solo") pauseSolo();
-    else returnHome();
+    const session = launch;
+    // Wait until Godot returns from its button handler before calling back into
+    // the engine or unloading its iframe.
+    setTimeout(() => {
+      if (session === launch && !elements.game.hidden) leaveGame();
+    }, 0);
   },
   gameReady(controls) {
     gameControls = controls;
@@ -103,7 +106,6 @@ window.GarageDay = {
   storeSave(data) {
     const key = saveKeys[launch.mode];
     if (!key) return;
-    resumable = Boolean(data);
     try {
       if (data) localStorage.setItem(key, data);
       else localStorage.removeItem(key);
@@ -148,7 +150,7 @@ function updateDisplay() {
 
 function openGame(mode, layout = 0, save = "") {
   launch = { mode, layout, save };
-  ready = paused = resumable = false;
+  ready = paused = false;
   gameControls = undefined;
   elements.lobby.hidden = true;
   elements.game.hidden = false;
@@ -166,7 +168,7 @@ function openGame(mode, layout = 0, save = "") {
 }
 
 function pauseSolo() {
-  if (!ready || !resumable) {
+  if (!ready) {
     returnHome();
     return;
   }
@@ -193,6 +195,21 @@ function continueGame() {
   }
 }
 
+function clearInvitation() {
+  if (invitation === null) return;
+  invitation = null;
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+function leaveGame() {
+  if (launch.mode === "solo") {
+    pauseSolo();
+  } else {
+    if (launch.mode === "guest") clearInvitation();
+    returnHome();
+  }
+}
+
 function returnHome(message = "") {
   const oldPeer = peer;
   peer = undefined;
@@ -201,7 +218,7 @@ function returnHome(message = "") {
   gameSound?.context.close().catch(() => {});
   gameSound = undefined;
   oldPeer?.destroy();
-  ready = paused = resumable = false;
+  ready = paused = false;
   gameControls = undefined;
   keys.clear();
   elements["game-frame"].removeAttribute("src");
@@ -317,13 +334,6 @@ function shareGame() {
 
 function captureVideo(canvas) {
   const view = canvas.ownerDocument.defaultView;
-  let requestId;
-  stopCapturing = () => {
-    if (requestId !== undefined) view.cancelAnimationFrame(requestId);
-    view.setGarageSharing?.(false);
-  };
-  view.setGarageSharing?.(true);
-
   const video = canvas.captureStream(0);
   const [track] = video.getVideoTracks();
   if (typeof track?.requestFrame !== "function") {
@@ -335,6 +345,7 @@ function captureVideo(canvas) {
   // Request frames on the game's refresh clock so the next paint can deliver them.
   const interval = 1000 / captureFps;
   let nextFrame = view.performance.now();
+  let requestId;
   function capture(now) {
     if (now + 0.6 >= nextFrame) {
       track.requestFrame();
@@ -346,6 +357,7 @@ function captureVideo(canvas) {
 
   if ("contentHint" in track) track.contentHint = "motion";
   requestId = view.requestAnimationFrame(capture);
+  stopCapturing = () => view.cancelAnimationFrame(requestId);
   return video;
 }
 
@@ -466,10 +478,7 @@ elements["multiplayer-button"].addEventListener("click", () => showScreen("multi
 elements["options-button"].addEventListener("click", () => showScreen("options"));
 elements["notes-button"].addEventListener("click", () => showScreen("patch-notes"));
 elements.back.addEventListener("click", () => {
-  if (screen === "invited") {
-    invitation = null;
-    history.replaceState(null, "", location.pathname + location.search);
-  }
+  if (screen === "invited") clearInvitation();
   showScreen(screen === "map-screen" && pickerMode === "host" ? "multiplayer" : "home");
 });
 elements.resume.addEventListener("click", continueGame);
@@ -492,7 +501,7 @@ elements["join-form"].addEventListener("submit", event => {
   joinGame();
 });
 elements.join.addEventListener("click", joinGame);
-elements.exit.addEventListener("click", () => launch.mode === "solo" ? pauseSolo() : returnHome());
+elements.exit.addEventListener("click", leaveGame);
 elements.quality.value = settings.quality;
 elements["show-fps"].checked = settings.showFps;
 for (const name of ["quality", "show-fps"]) {
