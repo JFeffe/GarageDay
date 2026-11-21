@@ -18,6 +18,10 @@ La partie hébergée est sauvegardée dans le navigateur de l’hôte en atelier
 
 ## Lancer le jeu dans Godot
 
+Sous Windows, double-clique sur [Jouer a Garage Day.bat](Jouer%20a%20Garage%20Day.bat) à la racine du projet. Le lanceur utilise Godot 4.5.1 dans le dossier voisin `Jam House` ou dans `tools\godot`. Il peut aussi utiliser `godot.exe` si la commande est disponible dans le PATH.
+
+Pour ouvrir le projet dans l’éditeur :
+
 1. Importe [project.godot](project.godot) dans le gestionnaire de projets de **Godot 4.5.1**.
 2. Attends la fin de l’import des assets et appuie sur **F5**.
 3. L’accueil propose **Continuer**, **Nouvelle partie**, **Multijoueur**, **Options** et les notes de mise à jour. Choisis un des trois garages pour commencer. Vise le téléphone du bureau et maintiens **A / F** pour ouvrir le service.
