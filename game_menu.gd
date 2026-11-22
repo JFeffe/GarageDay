@@ -189,6 +189,13 @@ func show_pause() -> void:
 func resume_game() -> void:
 	screen = ""
 	overlay.hide()
+	var endurance: bool = game.endurance_active
+	pause_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT if endurance else Control.PRESET_CENTER_TOP)
+	pause_button.text = "Pause" if endurance else "Menu · Start / Échap"
+	pause_button.position = Vector2(14,12) if endurance else Vector2(-115,12)
+	pause_button.size = Vector2(100,42) if endurance else Vector2(230,42)
+	fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT if endurance else Control.PRESET_CENTER_TOP)
+	fps.position = Vector2(128,22) if endurance else Vector2(-30,60)
 	pause_button.show()
 	game.show_activity_hud(true)
 	# Resume on the next frame so accepting the menu cannot interact with the garage.
@@ -293,8 +300,8 @@ func show_multiplayer() -> void:
 	button(content,"Retour",show_home)
 
 func show_notes() -> void:
-	page("notes","Notes de mise à jour","0.1.9 · Des stands à l’atelier")
-	content.add_child(label("Les 12 h reprennent la vue, le zoom et les commandes du garage de quartier. Le tableau de service et les repères d’intervention suivent la même présentation.",20,MINT))
+	page("notes","Notes de mise à jour","0.1.10 · Contrôle course")
+	content.add_child(label("Prépare les arrêts et donne le feu vert depuis le banc de contrôle au fond du garage. L’interface des 12 h laisse les zones d’intervention dégagées.",20,MINT))
 	button(content,"Retour",show_home)
 
 func show_message(message: String) -> void:

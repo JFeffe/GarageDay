@@ -36,11 +36,11 @@ Le bouton **Multijoueur** ouvre le mode Web dans le navigateur pour héberger ou
 
 Choisis **Nouvelle partie → Course de 12 h**, en local ou dans le navigateur. Tu gères les n° 27 et 81, chacune avec deux pilotes. Huit GT rivales roulent et s’arrêtent pendant que le classement se met à jour. L’horloge accélère en piste et ralentit lorsque tes voitures arrivent aux stands.
 
-Ouvre le **Plan d’arrêt** à la souris ou avec **Tab / Y** pour accéder au tableau. Choisis le box extérieur ou le garage, puis règle chaque intervention sur **Ignorer**, **Joueur** ou **Auto**. Les tâches automatiques sont plus longues et peuvent se dérouler en parallèle avec tes interventions. Le garage permet une réparation complète et laisse le box extérieur disponible.
+Rejoins le **banc de contrôle**, au fond du garage. Maintiens **A / F** au repère des écrans, puis sélectionne la GT et ouvre son **Plan d’arrêt**. Choisis le box extérieur ou le garage, puis règle chaque intervention sur **Ignorer**, **Joueur** ou **Auto**. Les tâches automatiques sont plus longues et peuvent se dérouler en parallèle avec tes interventions. Le garage permet une réparation complète et laisse le box extérieur disponible. Une fois les travaux terminés, retourne au contrôle et choisis **Feu vert · reprendre la piste**.
 
 Comme dans le garage de quartier, marche au **stick gauche / WASD / flèches**, vise au **stick droit / IJKL** et maintiens **A / F** sur le repère sélectionné. **LB / RB** ou **− / =** changent le zoom. Prends le pistolet à la pompe, puis branche-le sur la GT. Pour les pneus, lève chaque train avec son cric, change ses deux roues, puis abaisse-le. Récupère une clé près des outils pour réparer. Les deux crics et la pompe sont partagés entre les deux GT.
 
-Dans le navigateur, **Multijoueur → Créer une partie → Course de 12 h** partage la course. L’invité déplace un deuxième mécano et utilise les mêmes postes. **X / R** ouvre son plan d’arrêt pour la n° 81. La course peut être mise en pause et reprise tant que la session reste ouverte. Les sauvegardes d’atelier sont indépendantes.
+Dans le navigateur, **Multijoueur → Créer une partie → Course de 12 h** partage la course. Les deux mécanos peuvent utiliser le poste de contrôle pour les deux GT. Pendant que l’un s’occupe de la stratégie, l’autre peut continuer à travailler dans les stands. La course peut être mise en pause et reprise tant que la session reste ouverte. Les sauvegardes d’atelier sont indépendantes.
 
 ## Commandes
 

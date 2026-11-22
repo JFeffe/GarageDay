@@ -173,11 +173,22 @@ func check_local_menu() -> void:
 		await frames()
 		check(game.endurance.phase==Race.Phase.RACE,"A doit donner le départ depuis le briefing.")
 		await press_pad(JOY_BUTTON_Y)
+		hud.open_plan(0)
+		check(not hud.control_panel.visible and not hud.planner.visible,
+			"Une décision d’arrêt doit être inaccessible depuis le terrain.")
+		var worker: Dictionary = game.endurance_crew.workers[0]
+		var spawn: Vector2 = worker.point
+		worker.point = game.endurance_stands.CONTROL_POINT
+		await press_pad(JOY_BUTTON_Y)
+		check(hud.control_panel.visible and not hud.left_panel.visible,"Y doit ouvrir le panneau de gauche au poste de contrôle.")
 		await press_pad(JOY_BUTTON_A)
 		check(hud.planner.visible and hud.planner_index==0 and not game.endurance.cars[0].called,
 			"Y puis A doit ouvrir le plan d’arrêt et attendre la confirmation.")
 		await press_pad(JOY_BUTTON_B)
-		check(not hud.planner.visible and not game.endurance.cars[0].called,"Annuler un plan ne doit pas appeler la GT.")
+		check(hud.control_panel.visible and not hud.planner.visible and not game.endurance.cars[0].called,
+			"Annuler un plan doit restaurer le contrôle sans appeler la GT.")
+		await press_pad(JOY_BUTTON_B)
+		check(hud.field_input() and hud.left_panel.visible,"Quitter le poste doit restituer les commandes de terrain.")
 		check(game.camera.rotation_degrees.is_equal_approx(GarageCamera.ROTATION),
 			"L’endurance doit reprendre la perspective du garage de quartier.")
 		check(not hud.standings_rows.visible,"Le classement doit pouvoir se replier pour dégager la vue.")
@@ -190,8 +201,7 @@ func check_local_menu() -> void:
 		check(game.endurance_stands.zoom==1 and game.camera.size<overview,"RB doit rapprocher la caméra du mécano.")
 		await press_pad(JOY_BUTTON_LEFT_SHOULDER)
 		check(game.endurance_stands.zoom==0,"LB doit revenir au plan d’ensemble.")
-		var worker: Dictionary = game.endurance_crew.workers[0]
-		var spawn: Vector2 = worker.point
+		worker.point = spawn
 		var key := InputEventKey.new()
 		key.physical_keycode = KEY_D
 		key.pressed = true
@@ -203,12 +213,30 @@ func check_local_menu() -> void:
 		check(worker.point.x>spawn.x+0.1 and worker.avatar.visible,"Le mécano doit marcher avec les commandes habituelles.")
 		game.set_physics_process(false)
 		var guest: Array = [true,0.0,0.0,0.0,0.0,0,0.0,0.0,2]
+		var crew: Crew = game.endurance_crew
+		crew.tick(0.016,Race.PIT_RATE,Vector2.ZERO,false,guest,true)
 		hud.guest_input(guest)
-		check(hud.planner.visible and hud.planner_index==1,"L’invité peut ouvrir le plan de la n° 81 avec X.")
-		hud.planner_pick = 5
+		check(hud.control_owner==-1,"X ne doit pas ouvrir le contrôle à distance pour l’invité.")
+		crew.workers[1].point = crew.stands.CONTROL_POINT
+		hud.guest_input(guest)
+		check(hud.control_owner==1 and hud.field_input(),
+			"L’invité ouvre le contrôle avec X à proximité du banc pendant que l’hôte reste libre.")
+		guest[8] = 4
+		hud.guest_input(guest)
+		check(hud.planner.visible and hud.planner_index==1,"A ouvre le plan de la n° 81 à l’invité.")
+		guest[1] = -1.0
+		guest[8] = 0
+		hud.guest_input(guest)
+		guest[1] = 0.0
+		hud.guest_input(guest)
+		guest[1] = -1.0
+		hud.guest_input(guest)
+		guest[1] = 0.0
 		guest[8] = 4
 		hud.guest_input(guest)
 		check(game.endurance.cars[1].called and not game.endurance.cars[0].called,"A doit confirmer le plan de l’invité.")
+		hud.guest_input([])
+		check(hud.control_owner==-1 and not hud.control_panel.visible,"Une déconnexion doit libérer le poste.")
 		check_world_tools(game)
 		game.set_physics_process(true)
 		game.game_menu.show_pause()
@@ -242,9 +270,13 @@ func check_world_tools(game: Node3D) -> void:
 	crew.move_worker(0,0.016,Race.PIT_RATE,Vector2.ZERO,false,Vector2.RIGHT)
 	check(crew.workers[0].target.is_empty(),"Viser ailleurs ne doit pas sélectionner la pompe à distance.")
 	crew.move_worker(0,0.016,Race.PIT_RATE,Vector2.ZERO,true,Vector2.LEFT)
-	game.endurance_hud.update_action_rings(game.camera)
+	var hud = game.endurance_hud
+	hud.refresh()
 	check(crew.workers[0].target.get("action")=="nozzle" and crew.workers[0].outline.visible
-		and game.endurance_hud.work_rings[0].visible,"Viser et intervenir doit afficher les repères du garage de quartier.")
+		and hud.footer.text.contains("%"),"L’intervention garde son repère et affiche la progression en bas.")
+	try_station(crew,"control")
+	check(hud.control_panel.visible and hud.service_buttons[2].disabled,"Le feu vert doit rester bloqué si des actions sont en attente.")
+	hud.close_control()
 	try_station(crew,"nozzle")
 	check(crew.workers[0].held=="nozzle","Le pistolet doit se prendre à la pompe.")
 	try_station(crew,"fuel")
@@ -268,6 +300,18 @@ func check_world_tools(game: Node3D) -> void:
 	check(car.jobs.has("repair"),"La réparation doit démarrer au repère de la GT avec la clé.")
 	race.advance(140.0)
 	check(car.damage==0.0 and race.allowed(car,"exit"),"La GT réparée dans le garage doit être prête à repartir.")
+	check(not crew.station_options(0).any(func(option: Dictionary) -> bool: return option.action=="exit"),
+		"Aucune interaction devant la voiture ne doit pouvoir la libérer.")
+	hud.activate(2)
+	check(car.state==Race.State.GARAGE,"Le feu vert à distance doit être refusé.")
+	try_station(crew,"control")
+	check(not hud.service_buttons[2].disabled,"Le feu vert doit être disponible au contrôle après les réparations.")
+	game.endurance_stands.update_control_lights(race)
+	check(game.endurance_stands.control_lights[0].albedo_color==game.endurance_stands.CONTROL_READY,
+		"Le voyant de la GT prête doit passer au vert.")
+	hud.service_buttons[2].pressed.emit()
+	check(car.state==Race.State.EXIT,"Le bouton Feu vert doit faire repartir la GT.")
+	hud.close_control()
 
 func try_station(crew: Crew, action: String, axle := -1, wheel := -1) -> void:
 	for site in crew.station_options(0):
@@ -288,5 +332,5 @@ func run_tests() -> void:
 	check_complete_race()
 	await check_local_menu()
 	for failure in failures: push_error(failure)
-	if failures.is_empty(): print("PASS · perspective et zoom du garage, HUD, visée, plans, crics, pompe, interventions parallèles et invité.")
+	if failures.is_empty(): print("PASS · contrôle course sur place, feu vert, manette, invité, crics, pompe et interventions parallèles.")
 	quit(0 if failures.is_empty() else 1)

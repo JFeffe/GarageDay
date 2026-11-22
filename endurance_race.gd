@@ -372,7 +372,7 @@ func perform(index: int, action: String) -> bool:
 		"pace": car.pace = (car.pace+1)%PACE_NAMES.size()
 		"exit":
 			leave(car)
-			announce("N° %d · sortie des stands." % car.number)
+			announce("N° %d · feu vert, sortie des stands." % car.number)
 	assign_stands()
 	return true
 

@@ -14,6 +14,10 @@ const BOX := Vector3(0,0.055,4.15)
 const GARAGE := Vector3(0,0.055,-5.9)
 const PUMP := Vector2(2.9,0.17)
 const TOOLS := [Vector2(5.05,-3.45),Vector2(6.75,-7.8)]
+const CONTROL_POINT := Vector2(4.25,-8.0)
+const CONTROL_IDLE := Color("#587b7a")
+const CONTROL_WAIT := Color("#ffc06a")
+const CONTROL_READY := Color("#79edaa")
 const JACK_HOME := [Vector2(-4.25,0.10),Vector2(-3.15,0.10)]
 const WALKABLE := Rect2(-15.8,-10.42,31.6,17.02)
 
@@ -25,6 +29,7 @@ var body_height: Array[float] = []
 var obstacles: Array[Rect2] = []
 var jacks: Array[Node3D] = []
 var hose: Array[MeshInstance3D] = []
+var control_lights: Array[StandardMaterial3D] = []
 var zoom := 0
 
 func build() -> void:
@@ -41,6 +46,7 @@ func build() -> void:
 	for marker in range(-18,18):
 		paint(Vector2(marker+0.07,1.57),Vector2(marker+0.70,1.57),0.075,CREAM)
 	build_garage()
+	build_control_desk()
 	build_lane()
 	for i in range(2): add_gt(i)
 	build_service_equipment()
@@ -103,7 +109,6 @@ func build_garage() -> void:
 			Props.loose_tire(self,Vector3(-9.15+0.94*i,y,-4.74),CREAM).rotation = Vector3.ZERO
 	Props.fit(self,Props.CABINET,Vector3(1.12,1.14,0.85),Vector3(-9.15,0.03,-9.72),PI)
 	Props.fit(self,Props.STATION_MODELS.bench,Vector3(3.32,1.20,1.0),Vector3(6.75,0.03,-8.94))
-	Props.fit(self,Props.SHELF,Vector3(2.5,1.55,0.82),Vector3(4.5,0.03,-9.94))
 	Props.fit(self,Props.CABINET,Vector3(1.28,1.05,0.92),Vector3(9.65,0.03,-9.22),PI)
 	Props.fit(self,Props.COMPRESSOR,Vector3(1.31,0.99,0.65),Vector3(9.12,0.03,-4.8))
 	Props.fit(self,Props.TROLLEY,Vector3(0.86,1.02,0.71),Vector3(6.2,0.03,-3.42),-0.24)
@@ -115,6 +120,55 @@ func build_garage() -> void:
 		obstacles.append(footprint)
 	for x in [-5.82,6.0]:
 		Props.fit(self,Props.CONE,Vector3(0.46,0.65,0.46),Vector3(x,0.035,1.96))
+
+func build_control_desk() -> void:
+	var x := CONTROL_POINT.x-0.57
+	var z := -9.63
+	block(Vector3(3.42,0.015,3.40),Vector3(x,0.037,-8.70),Color("#718a80"),0.01)
+	for edge in [x-1.71,x+1.71]:
+		paint(Vector2(edge,-10.38),Vector2(edge,-7.0),0.063,CREAM,0.054)
+	paint(Vector2(x-1.71,-7.0),Vector2(x+1.71,-7.0),0.063,CREAM,0.054)
+	sign_text("CONTRÔLE",Vector3(x,0.058,-7.34),0.38,CREAM,true)
+	block(Vector3(3.10,0.15,0.86),Vector3(x,0.94,z),Color("#bf936d"),0.06)
+	for side in [-1,1]:
+		block(Vector3(0.14,0.87,0.69),Vector3(x+side*1.40,0.50,z),INK)
+	block(Vector3(2.91,0.28,0.12),Vector3(x,0.74,z+0.372),INK)
+	sign_text("CONTRÔLE COURSE",Vector3(x,0.74,z+0.436),0.22,CREAM)
+	Props.fit(self,Props.STATION_MODELS.seat,Vector3(1.21,0.65,0.46),Vector3(x-0.94,0.040,-8.12),PI/2.0)
+	obstacles.append(Rect2(x-1.65,z-0.52,3.30,1.04))
+	obstacles.append(Rect2(x-1.21,-8.86,0.54,1.45))
+	for i in range(3):
+		var screen_x := x+(i-1)*0.96
+		block(Vector3(0.33,0.04,0.29),Vector3(screen_x,1.03,z),INK,0.02)
+		block(Vector3(0.11,0.18,0.10),Vector3(screen_x,1.13,z),INK,0.02)
+		block(Vector3(0.82,0.51,0.15),Vector3(screen_x,1.45,z),INK)
+		block(Vector3(0.72,0.40,0.022),Vector3(screen_x,1.46,z+0.081),Color("#37696a"),0.014)
+		sign_text(["GT 27","TEMPS","GT 81"][i],Vector3(screen_x,1.55,z+0.096),0.13,CREAM)
+		for line in range(2):
+			block(Vector3(0.23+line*0.12,0.022,0.006),Vector3(screen_x-0.11,1.36+line*0.058,z+0.095),Color("#8fbdb4"),0.002)
+		if i!=1:
+			var light := block(Vector3(0.076,0.076,0.022),Vector3(screen_x+0.21,1.40,z+0.096),CONTROL_IDLE,0.014)
+			var material := light.material_override as StandardMaterial3D
+			material.emission_enabled = true
+			material.emission = CONTROL_IDLE
+			control_lights.append(material)
+	block(Vector3(0.45,0.037,0.19),Vector3(CONTROL_POINT.x,1.033,z+0.28),INK,0.012)
+
+func update_control_lights(race: Race) -> void:
+	for i in range(control_lights.size()):
+		var car := race.cars[i]
+		var color := CONTROL_IDLE
+		if release_available(race,i): color = CONTROL_READY
+		elif car.called or car.state in [Race.State.ENTRY,Race.State.QUEUE,Race.State.BOX,Race.State.GARAGE]:
+			color = CONTROL_WAIT
+		var light := control_lights[i]
+		if light.albedo_color!=color:
+			light.albedo_color = color
+			light.emission = color
+
+func release_available(race: Race, index: int) -> bool:
+	var car := race.cars[index]
+	return race.allowed(car,"exit") and ready_for_work(index,car)
 
 func build_lane() -> void:
 	block(Vector3(8.72,0.027,4.15),Vector3(0,0.021,4.27),Color("#747e7d"))

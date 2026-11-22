@@ -8,6 +8,8 @@ const Meshes := preload("res://workshop_miniature.gd")
 const SPAWN := [Vector2(-4.25,-4.0),Vector2(4.25,-4.0)]
 const REACH := 1.55
 
+signal control_requested(worker_index: int)
+
 var stands: Stands
 var race: Race
 var workers: Array[Dictionary] = []
@@ -136,6 +138,7 @@ func clear_point(origin: Vector2) -> Vector2:
 func station_options(index: int) -> Array[Dictionary]:
 	var work: Array[Dictionary] = []
 	if race.phase!=Race.Phase.RACE: return work
+	work.append(target(-1,"control",Stands.CONTROL_POINT,"Ouvrir le contrôle course",2.0))
 	var worker := workers[index]
 	if (not guest_present and index==0) or workers[1-index].held!="nozzle":
 		work.append(target(-1,"nozzle",Stands.PUMP+Vector2(0.71,0.15),
@@ -152,9 +155,10 @@ func station_options(index: int) -> Array[Dictionary]:
 		if race.manual_needed(i,"driver"):
 			work.append(target(i,"driver",stands.local_service_point(car,Vector2(1.62,-0.04)),"Faire la relève",8.0))
 		if race.manual_needed(i,"tires"): tire_options(work,i,car)
-		if race.allowed(car,"exit"):
-			work.append(target(i,"exit",stands.local_service_point(car,Vector2(1.62,-0.04)),"Faire repartir la GT",3.0))
 	return work
+
+func at_control(index: int) -> bool:
+	return (index==0 or guest_present) and workers[index].point.distance_to(Stands.CONTROL_POINT)<=REACH
 
 func tire_options(work: Array[Dictionary], index: int, car: Dictionary) -> void:
 	for axle in range(2):
@@ -189,12 +193,12 @@ func nearby(point: Vector2, facing: Vector2, options: Array) -> Dictionary:
 	return result
 
 func complete(index: int, option: Dictionary) -> void:
+	if option.action=="control":
+		control_requested.emit(index)
+		return
 	var worker := workers[index]
 	if option.car<0:
 		worker.held = "" if worker.held==option.action else option.action
-		return
-	if option.action=="exit":
-		race.perform(option.car,"exit")
 		return
 	if race.manual_action(option.car,option.action,option.axle,option.wheel):
 		if option.action=="fuel": worker.held = ""
@@ -213,8 +217,9 @@ func update_markers() -> void:
 
 func instruction(index: int) -> String:
 	var worker := workers[index]
-	if worker.target.is_empty(): return "Vise un poste avec le stick droit ou I / J / K / L."
+	if worker.target.is_empty(): return "Contrôle course au fond du garage" if worker.held=="" else "En main · "+held_item(index)
 	var prefix := "N° %d · " % race.cars[worker.target.car].number if worker.target.car>=0 else ""
+	if worker.progress>0.0: return "%s%s  ·  %d %%" % [prefix,worker.target.title,roundi(progress(index)*100.0)]
 	return "Maintenir A / F  ·  %s%s" % [prefix,worker.target.title]
 
 func held_item(index: int) -> String:

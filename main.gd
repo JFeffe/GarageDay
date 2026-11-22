@@ -176,12 +176,13 @@ func start_endurance() -> void:
 		endurance_hud = EnduranceHud.new()
 		add_child(endurance_hud)
 		endurance_hud.build(endurance,endurance_crew)
+		endurance_crew.control_requested.connect(endurance_hud.open_control)
 		endurance_hud.restart_requested.connect(start_endurance)
 		endurance_hud.exit_requested.connect(game_menu.return_home)
 	else:
 		endurance.setup(randi())
 		endurance_crew.reset()
-		endurance_hud.close_plan()
+		endurance_hud.close_control()
 	endurance_stands.zoom = 0
 	resume_endurance()
 
@@ -196,6 +197,7 @@ func resume_endurance() -> void:
 	endurance_stands.show()
 	frame_endurance(1.0)
 	endurance_stands.update_cars(endurance,0.0)
+	endurance_stands.update_control_lights(endurance)
 	endurance_hud.refresh()
 	game_menu.resume_game()
 
@@ -273,7 +275,7 @@ func tick_endurance(dt: float) -> void:
 	var phase := endurance.phase
 	var guest: Array = workshop.guest_input if hosting else []
 	var guest_can_work := endurance_hud.guest_input(guest)
-	var clock_rate := EnduranceRace.PIT_RATE if endurance_hud.planner.visible else endurance.rate()
+	var clock_rate := EnduranceRace.PIT_RATE if endurance_hud.control_owner>=0 else endurance.rate()
 	endurance.advance(dt*clock_rate)
 	endurance_stands.update_cars(endurance,dt)
 	var field_input := endurance_hud.field_input()
@@ -283,10 +285,10 @@ func tick_endurance(dt: float) -> void:
 	if Input.is_action_just_pressed("zoom_in"): endurance_stands.change_zoom(1)
 	if Input.is_action_just_pressed("zoom_out"): endurance_stands.change_zoom(-1)
 	frame_endurance(minf(dt*7.0,1.0))
-	endurance_hud.update_action_rings(camera)
 	endurance_refresh += dt
 	if endurance_refresh>=0.10 or phase!=endurance.phase:
 		endurance_refresh = 0.0
+		endurance_stands.update_control_lights(endurance)
 		endurance_hud.refresh()
 		if phase!=endurance.phase:
 			endurance_hud.focus_first()
