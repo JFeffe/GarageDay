@@ -30,6 +30,12 @@ Pour ouvrir le projet dans l’éditeur :
 
 Le bouton **Multijoueur** ouvre le mode Web dans le navigateur pour héberger ou rejoindre une partie.
 
+### Essai à la première personne
+
+Depuis l’accueil du jeu local, choisis **Essai à la première personne**. Une berline est déjà dans la baie du Petit Atelier. Lève le pont et suis le tableau de service pour remplacer ses plaquettes avant, sans chronomètre.
+
+Déplace-toi avec **WASD**, les flèches ou le stick gauche. Regarde avec la **souris** ou le stick droit. Vise une pièce ou un poste et utilise **F / A** quand l’action s’affiche. **Échap / Start** ouvre le menu pour reprendre, recommencer l’essai ou revenir à l’accueil. La partie de l’atelier conserve sa progression séparément.
+
 **View / F9** ouvre le menu de nouvelle partie. Tu peux choisir **Le Petit Atelier** avec une baie et des salles réduites, **La Traversée** avec une baie, **Le Tandem** avec deux ou **Les Trois Ponts** avec trois.
 
 ## Les 12 h de Garage Day

@@ -4,6 +4,7 @@ const SYMBOL_FONT := preload("res://assets/fonts/NotoSansSymbols2-Regular.ttf")
 const HostSave := preload("res://host_save.gd")
 const Coop := preload("res://workshop_coop.gd")
 const GameMenu := preload("res://game_menu.gd")
+const Workshop := preload("res://workshop.gd")
 const Map := preload("res://workshop_map.gd")
 const EnduranceRace := preload("res://endurance_race.gd")
 const EnduranceStands := preload("res://endurance_stands.gd")
@@ -21,7 +22,8 @@ const BINDINGS := {
 }
 
 var player_visual = preload("res://player_visual.gd").new()
-var workshop = preload("res://workshop.gd").new()
+var workshop = Workshop.new()
+var regular_workshop: Workshop
 var web_room: JavaScriptObject
 var web_controls: JavaScriptObject
 var hosting := false
@@ -143,6 +145,7 @@ func saved_game() -> String:
 	return FileAccess.get_file_as_string(local_save_path)
 
 func start_local_game(layout: int) -> void:
+	stop_first_person()
 	hide_endurance()
 	workshop.menu.hide()
 	workshop.build(layout)
@@ -152,6 +155,7 @@ func start_local_game(layout: int) -> void:
 	game_menu.resume_game()
 
 func continue_local_game() -> void:
+	stop_first_person()
 	if not session_active:
 		var checkpoint := saved_game()
 		if not HostSave.restore(workshop,checkpoint):
@@ -162,7 +166,43 @@ func continue_local_game() -> void:
 	hide_endurance()
 	game_menu.resume_game()
 
+func start_first_person() -> void:
+	if OS.has_feature("web"): return
+	stop_first_person()
+	store_checkpoint()
+	hide_endurance()
+	regular_workshop = workshop
+	regular_workshop.site.hide()
+	regular_workshop.tool_holder.hide()
+	regular_workshop.ui.hide()
+	regular_workshop.engine.stream_paused = true
+	workshop = Workshop.new()
+	workshop.setup(self,Map.COMPACT_LAYOUT,true)
+	player_visual.model.hide()
+	game_menu.resume_game()
+
+func stop_first_person() -> void:
+	if regular_workshop==null: return
+	workshop.first_person.set_input_active(false)
+	workshop.site.hide()
+	workshop.tool_holder.hide()
+	workshop.ui.hide()
+	workshop.site.queue_free()
+	workshop.tool_holder.queue_free()
+	workshop.ui.queue_free()
+	workshop = regular_workshop
+	regular_workshop = null
+	workshop.site.show()
+	workshop.tool_holder.show()
+	workshop.engine.stream_paused = false
+	avatar.visible = workshop.driven_bay<0
+	player_visual.model.show()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	workshop.sync_player(0.0,0.0)
+	workshop.update_camera(1.0)
+
 func start_endurance() -> void:
+	stop_first_person()
 	store_checkpoint()
 	if endurance==null:
 		endurance = EnduranceRace.new()
@@ -215,6 +255,7 @@ func hide_endurance() -> void:
 
 func show_activity_hud(value: bool) -> void:
 	workshop.ui.visible = value and not endurance_active
+	workshop.update_first_person_input()
 	if endurance_hud!=null: endurance_hud.visible = value and endurance_active
 	if not value and endurance_active and hosting and web_room!=null: web_room.reportStandings("")
 
@@ -262,7 +303,7 @@ func _process(dt: float) -> void:
 		if web_room!=null: web_room.reportFps(Engine.get_frames_per_second())
 
 func _physics_process(dt: float) -> void:
-	if not session_active and not endurance_active: return
+	if not session_active and not endurance_active and regular_workshop==null: return
 	if hosting:
 		var controls: Variant = JSON.parse_string(web_room.guestInput())
 		workshop.guest_input = controls if controls is Array else []
@@ -270,7 +311,7 @@ func _physics_process(dt: float) -> void:
 	else: workshop.tick(dt)
 	if hosting:
 		send_room_audio()
-	if endurance_active: return
+	if endurance_active or regular_workshop!=null: return
 	save_elapsed += dt
 	if save_elapsed>=0.8:
 		save_elapsed = 0.0
@@ -316,7 +357,7 @@ func send_room_audio() -> void:
 	web_room.gameAudio(Marshalls.raw_to_base64(frames.to_byte_array()),room_audio_rate)
 
 func store_checkpoint() -> void:
-	if not session_active or endurance_active or workshop.relocating!="": return
+	if not session_active or endurance_active or regular_workshop!=null or workshop.relocating!="": return
 	if workshop.run.mode not in ["open","lost","won"]: return
 	var data := HostSave.capture(workshop) if workshop.run.mode=="open" else ""
 	if data==last_checkpoint: return

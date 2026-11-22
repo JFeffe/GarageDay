@@ -157,6 +157,7 @@ func picture(texture: Texture2D, width: float, height: float) -> TextureRect:
 	return result
 
 func show_home() -> void:
+	game.stop_first_person()
 	game.store_checkpoint()
 	page("home","Garage Day","Atelier de quartier et course d’endurance.")
 	var row := HBoxContainer.new()
@@ -169,6 +170,8 @@ func show_home() -> void:
 	if game.session_active or not game.saved_game().is_empty():
 		button(actions,"Continuer",game.continue_local_game)
 	button(actions,"Nouvelle partie",request_new_game)
+	if not OS.has_feature("web"):
+		button(actions,"Essai à la première personne",game.start_first_person)
 	if game.endurance_in_progress(): button(actions,"Reprendre les 12 h",game.resume_endurance)
 	button(actions,"Multijoueur",show_multiplayer)
 	button(actions,"Options",func() -> void: show_options("home"))
@@ -179,10 +182,11 @@ func show_home() -> void:
 	content.add_child(label("v"+str(ProjectSettings.get_setting("application/config/version")),14,MINT))
 
 func show_pause() -> void:
-	if not game.session_active and not game.endurance_active: return
+	if not game.session_active and not game.endurance_active and game.regular_workshop==null: return
 	game.store_checkpoint()
 	page("pause","Pause","La course est en pause." if game.endurance_active else "Le garage est en pause. Reprends quand tu veux.")
 	button(content,"Reprendre",resume_game)
+	if game.regular_workshop!=null: button(content,"Recommencer l’essai",game.start_first_person)
 	button(content,"Options",func() -> void: show_options("pause"))
 	button(content,"Retour au menu d’accueil",return_home)
 	if not OS.has_feature("web"): button(content,"Quitter le jeu",quit_game)
@@ -198,7 +202,7 @@ func resume_game() -> void:
 	pause_button.size = Vector2(100,42) if endurance else Vector2(230,42)
 	fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT if endurance else Control.PRESET_CENTER_TOP)
 	fps.position = Vector2(493,22) if endurance else Vector2(-30,60)
-	pause_button.show()
+	pause_button.visible = game.regular_workshop==null
 	game.show_activity_hud(true)
 	# Resume on the next frame so accepting the menu cannot interact with the garage.
 	resume_after_input.call_deferred()
@@ -207,6 +211,7 @@ func resume_after_input() -> void:
 	await get_tree().process_frame
 	if screen=="":
 		get_tree().paused = false
+		game.workshop.update_first_person_input()
 		if game.endurance_active: game.endurance_hud.focus_first()
 
 func return_home() -> void:

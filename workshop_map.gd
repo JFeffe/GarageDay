@@ -58,6 +58,7 @@ const ROAD_TOP := -18.0
 const ROAD_LANE := -15.05
 const ARRIVAL_ROAD_LANE := 37.7
 const ARRIVAL_ROAD_END := 41.2
+const CEILING_HEIGHT := 3.12
 const PEDESTRIAN_ACCESS := Vector2(9.36,-0.95)
 const SHOP_PERSONNEL_DOOR := Rect2(12.55,16.82,1.27,0.18)
 const WAITING_AMENITIES := ["vending","magazines"]
@@ -105,8 +106,11 @@ var used_tire_zone := Rect2i()
 var bearing_audio: AudioStreamPlayer
 var bearing_clips: Array[AudioStreamWAV] = []
 
-func build(g: Node3D, layout_index: int) -> void:
+var eye_level := false
+
+func build(g: Node3D, layout_index: int, eye_level_view := false) -> void:
 	game = g
+	eye_level = eye_level_view
 	var layout: Array = LAYOUTS[layout_index]
 	var count: int = layout[2]
 	variant = layout[3]
@@ -173,6 +177,10 @@ func build(g: Node3D, layout_index: int) -> void:
 		var tile := Vector2i(1,seat_row)
 		seats.append(center(tile)+Vector2(0.23,0))
 		make_station("seat_%d"%i,"Banquette",tile,Color("#759da2"),0.48)
+	if eye_level:
+		var roof: MeshInstance3D = game.box(self,Vector3(size.x,0.16,depth),
+			Vector3(size.x*0.5,CEILING_HEIGHT+0.08,depth*0.5),Color("#d7dad0"))
+		roof.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for x in ([15.5,7.5] if compact else [11.5,7.5]): build_arrival_space(x)
 	build_used_tire_zone()
 	make_station("phone","Téléphone",office,Color("#947760"),0.83,2)
@@ -246,7 +254,7 @@ func make_station(id: String, title: String, tile: Vector2i, color: Color, heigh
 		desk_label(root,"ACCUEIL",0.5,height,Color("#2c585a"))
 		return
 	var label := label_at(root,title,Vector3(0,height+0.36,0))
-	label.pixel_size = 0.0059
+	label.pixel_size = 0.0032 if eye_level else 0.0059
 	stations[id].caption = label
 	match id:
 		"phone":
@@ -322,7 +330,7 @@ func build_bay(index: int, at: Vector2) -> void:
 		var gate := Node3D.new()
 		add_child(gate)
 		gate.position = Vector3(x,0,z)
-		Neighborhood.fit(gate,Neighborhood.SHUTTER,Vector3(3.04,0.70,0.14))
+		Neighborhood.fit(gate,Neighborhood.SHUTTER,Vector3(3.04,CEILING_HEIGHT if eye_level else 0.70,0.14))
 		gates.append(gate)
 	for z in [0.0,depth-0.18]:
 		if index==0 and z>0:
@@ -346,7 +354,7 @@ func build_bay(index: int, at: Vector2) -> void:
 	var lever_at := at+Vector2(3.0,3.5)
 	var lever := Miniature.lift_control(self,lever_at)
 	var label := label_at(lever.root,"PONT %02d"%(index+1),Vector3(0,1.17,0))
-	label.pixel_size = 0.0055
+	label.pixel_size = 0.0032 if eye_level else 0.0055
 	cells[cell(lever_at)] = {"kind":"lift"}
 	var lift := Neighborhood.lift(self,at)
 	Neighborhood.dress_bay(self,at)
@@ -429,7 +437,7 @@ func show_work_markers(index: int, cues: Array[Dictionary], view_size: float) ->
 		marker.font_size = 28
 		marker.outline_size = 10
 		marker.outline_modulate = Color("#26383d")
-		marker.no_depth_test = true
+		marker.no_depth_test = not eye_level
 		markers.append(marker)
 	for i in range(markers.size()):
 		var marker: Label3D = markers[i]
@@ -439,12 +447,15 @@ func show_work_markers(index: int, cues: Array[Dictionary], view_size: float) ->
 		var cue := cues[i]
 		var ready: bool = cue.get("ready",false)
 		var compact: bool = cue.get("compact",false)
-		if compact and view_size>24.0:
+		if eye_level:
+			marker.text = "▼"
+			marker.pixel_size = clampf(get_viewport().get_camera_3d().position.distance_to(cue.at)*0.00125,0.001,0.010)
+		elif compact and view_size>24.0:
 			marker.text = cue.label+"\n▼" if ready else "▼"
 		else:
 			marker.text = ("A / F · " if ready else "")+cue.label+"\n▼"
 		marker.position = cue.at
-		marker.pixel_size = view_size*(0.00065 if compact else 0.00076)
+		if not eye_level: marker.pixel_size = view_size*(0.00065 if compact else 0.00076)
 		marker.modulate = PLACEMENT_READY_COLOR if ready else WORK_MARKER_COLOR
 		marker.show()
 
@@ -604,9 +615,15 @@ func build_personnel_door(left: float, right: float) -> void:
 	add_child(personnel_door)
 	personnel_door.position = Vector3(area.position.x,0.06,area.get_center().y)
 	var width := area.size.x
-	game.box(personnel_door,Vector3(width-0.025,0.77,0.09),Vector3(width/2,0.39,0),Color("#628c82"))
-	game.box(personnel_door,Vector3(0.52,0.23,0.105),Vector3(width/2,0.54,0),Color("#a9c3bc"))
-	game.box(personnel_door,Vector3(0.12,0.04,0.16),Vector3(width-0.15,0.34,0),Color("#dfbf79"))
+	var height := 2.17 if eye_level else 0.77
+	game.box(personnel_door,Vector3(width-0.025,height,0.09),Vector3(width/2,height*0.5+0.005,0),Color("#628c82"))
+	game.box(personnel_door,Vector3(0.52,0.37 if eye_level else 0.23,0.105),
+		Vector3(width/2,1.55 if eye_level else 0.54,0),Color("#a9c3bc"))
+	game.box(personnel_door,Vector3(0.12,0.04,0.16),
+		Vector3(width-0.15,1.06 if eye_level else 0.34,0),Color("#dfbf79"))
+	if eye_level:
+		game.box(self,Vector3(width,CEILING_HEIGHT-height-0.06,area.size.y),
+			Vector3(area.get_center().x,(CEILING_HEIGHT+height+0.06)*0.5,area.get_center().y),Color("#d7d6c4"))
 	game.box(self,Vector3(width,0.022,0.36),Vector3(area.get_center().x,0.058,area.get_center().y),Color("#728e85"))
 	sign_at("PORTE PIÉTONNE",Vector2(area.get_center().x,floor_inside.end.y+0.56),Color("#fff0cf"))
 
@@ -931,21 +948,28 @@ func add_wall(x: float,z: float,w: float,h: float) -> void:
 	var p := area.get_center()
 	Miniature.bevel_box(self,Vector3(w,0.56,h),Vector3(p.x,0.32,p.y),Color("#d7c5a9"),0.022)
 	Miniature.bevel_box(self,Vector3(w+0.035,0.064,h+0.035),Vector3(p.x,0.624,p.y),Color("#f2e4c8"),0.017)
+	if eye_level:
+		game.box(self,Vector3(w,CEILING_HEIGHT-0.65,h),Vector3(p.x,(CEILING_HEIGHT+0.65)*0.5,p.y),Color("#d7d6c4"))
 
 func label_at(parent: Node3D, title: String, at: Vector3) -> Label3D:
 	var caption := Label3D.new()
 	caption.text = title
 	caption.position = at
-	caption.rotation_degrees.x = -52
+	if eye_level:
+		caption.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		caption.visibility_range_begin = 1.15
+		caption.visibility_range_end = 9.0
+		caption.font_size = 24
+	else: caption.rotation_degrees.x = -52
 	caption.modulate = Color("#fff0da")
 	caption.outline_modulate = Color("#354b51")
 	caption.outline_size = 5
-	caption.pixel_size = 0.0074
+	caption.pixel_size = 0.0036 if eye_level else 0.0074
 	parent.add_child(caption)
 	return caption
 
 func sign_at(title: String,p: Vector2,color: Color) -> void:
-	label_at(self,title,Vector3(p.x,0.66,p.y)).modulate = color
+	label_at(self,title,Vector3(p.x,1.65 if eye_level else 0.66,p.y)).modulate = color
 
 func supply_model(parent: Node3D, kind: String, pos: Vector3) -> Node3D:
 	var root := Node3D.new()

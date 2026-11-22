@@ -9,6 +9,7 @@ const Catalog := preload("res://workshop_catalog.gd")
 const Repairs := preload("res://workshop_repairs.gd")
 const RepairPose := preload("res://workshop_repair_pose.gd")
 const GarageCamera := preload("res://garage_camera.gd")
+const FirstPerson := preload("res://workshop_first_person.gd")
 const HudStyle := preload("res://garage_hud_style.gd")
 const PlayerVisual := preload("res://player_visual.gd")
 const FORWARD_SPEED := 4.6
@@ -19,6 +20,7 @@ const CUSTOMER_NEAR := 1.4
 const RECEIPT_SECONDS := 2.2
 const HUD_INTERVAL := 1.0/20.0
 const QUEUE_PATH_INTERVAL := 0.25
+const LEVER_AIM_HEIGHT := 1.12
 
 enum IntakeStatus { APPROACH, TURN, LEFT, RIGHT, FORWARD, BACK, SLOW, BLOCKED, READY }
 enum ParkingStatus { ALIGN, SLOW, BLOCKED, READY, FULL }
@@ -84,9 +86,11 @@ var departures: Dictionary = {}
 var road_customer := -1
 var coop
 var guest_input: Array = []
+var first_person: FirstPerson
 
-func setup(g: Node3D, initial_layout := Map.COMPACT_LAYOUT) -> void:
+func setup(g: Node3D, initial_layout := Map.COMPACT_LAYOUT, eye_level := false) -> void:
 	game = g
+	if eye_level: first_person = FirstPerson.new()
 	setup_ui()
 	build(initial_layout)
 
@@ -100,6 +104,7 @@ func setup_ui() -> void:
 	ring = Ring.new()
 	ui.add_child(ring)
 	ring.hide()
+	if first_person!=null: ui.add_child(first_person)
 	engine = AudioStreamPlayer.new()
 	engine.volume_db = -25.0
 	if game.hosting: engine.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
@@ -107,6 +112,7 @@ func setup_ui() -> void:
 	ui.add_child(engine)
 	menu = Menu.new()
 	ui.add_child(menu)
+	if first_person!=null: menu.visibility_changed.connect(update_first_person_input)
 	menu.chosen.connect(menu_chosen)
 	menu.dismissed.connect(menu_dismissed)
 	menu.reroll_requested.connect(reroll_vendor_offers)
@@ -286,7 +292,7 @@ func build(index: int) -> void:
 	layout = index
 	site = Scene.instantiate()
 	game.add_child(site)
-	site.build(game,layout)
+	site.build(game,layout,first_person!=null)
 	run = Day.new()
 	run.intro_brakes = index==0 or index==Map.COMPACT_LAYOUT
 	day_setup.clear()
@@ -344,9 +350,28 @@ func build(index: int) -> void:
 		update_stack(station.top,station.root,Vector3(0,station.height+0.09,0))
 	refresh_cart()
 	item_prop = null
+	if first_person!=null: prepare_first_person()
 	sync_player(0,0)
 	update_camera(1)
 	update_hud()
+
+func prepare_first_person() -> void:
+	run.start()
+	# Use the same first ticket as the regular Petit Atelier.
+	run.tick(2.0,[])
+	var bay: Dictionary = site.bays[0]
+	bay.order = run.waiting.pop_front()
+	bay.status = "parked"
+	site.spawn_car(bay,bay.order,bay.at,PI)
+	site.animate_bays(0.0,{})
+	player = bay.lever_at+Vector2(0.4,1.75)
+	var lever := Vector3(bay.lever_at.x,LEVER_AIM_HEIGHT,bay.lever_at.y)
+	first_person.face(lever-first_person.eye_position(player,0.0))
+	facing = first_person.forward()
+
+func update_first_person_input() -> void:
+	if first_person!=null:
+		first_person.set_input_active(ui.visible and not menu.visible and not game.get_tree().paused)
 
 func item_name(id: String) -> String:
 	if id=="oil" and run.purchases.has("oil_recovery"): return "Bac récupérateur"
@@ -453,6 +478,7 @@ func station_action(id: String, p: Vector2) -> Dictionary:
 			return target("parts","Choisir une pièce",p,0,{"station":id})
 	match id:
 		"phone":
+			if first_person!=null: return {}
 			match run.mode:
 				"open": return target("start","Ouvrir le jour %d"%(run.day+1),p,0.7)
 				"day":
@@ -650,16 +676,20 @@ func repair_targets(index: int, decline: bool = false) -> Array[Dictionary]:
 	for wheel in range(4):
 		if not Repairs.wheel_needed(order,wheel): continue
 		var at: Vector2 = bay.at+Map.WHEEL_OFFSETS[wheel]
+		var option: Dictionary
 		if decline and Repairs.active(order,"tires") and not tire_work_started(order):
-			list.append(target("refuse","Refuser le changement de pneus",at,0.58,{"bay":index,"job":"tires"}))
+			option = target("refuse","Refuser le changement de pneus",at,0.58,{"bay":index,"job":"tires"})
 		else:
-			var option := wheel_action(order,wheel,at,index)
+			option = wheel_action(order,wheel,at,index)
 			var state: int = order.wheels[wheel]
 			option.work_priority = 20 if state==2 else (10 if state>0 else 0)
 			if option.has("work"):
 				option.bay = index
 				option.work.zone = "Roue "+Catalog.WHEEL_SIDES[wheel]
-			list.append(option)
+		if first_person!=null:
+			var hub: Node3D = bay.discs[wheel]
+			option.aim_point = hub.global_position
+		list.append(option)
 	for id in order.required:
 		if id in Catalog.WHEEL_JOBS or id in order.done: continue
 		var options: Array[Dictionary] = []
@@ -684,6 +714,7 @@ func candidates(decline: bool) -> Array[Dictionary]:
 		var option := station_action(id,p)
 		if not option.is_empty():
 			if run.mode=="open": option["station"] = id
+			if first_person!=null: option.aim_height = site.stations[id].height+0.12
 			list.append(option)
 	var cashier := checkout_action()
 	if not cashier.is_empty(): list.append(cashier)
@@ -704,7 +735,10 @@ func candidates(decline: bool) -> Array[Dictionary]:
 	if site.van.visible: list.append(target("vendor","Voir les offres de la fourgonnette",site.vendor_at-Vector2(0,0.65),0.0))
 	for i in range(site.bays.size()):
 		var bay: Dictionary = site.bays[i]
-		if player.distance_squared_to(bay.lever_at)<7: list.append(lever_action(i))
+		if player.distance_squared_to(bay.lever_at)<7:
+			var lever := lever_action(i)
+			if first_person!=null: lever.aim_height = LEVER_AIM_HEIGHT
+			list.append(lever)
 		var seat: Vector2 = site.seats[i]
 		if can_call_to_checkout(bay) and visitor_at(bay.order.id,seat):
 			list.append(invite_to_checkout(bay.order,seat))
@@ -714,7 +748,7 @@ func candidates(decline: bool) -> Array[Dictionary]:
 		if bay.status!="parked": continue
 		var approval := approval_action(i,decline)
 		if not approval.is_empty(): list.append(approval)
-		elif order_ready(bay.order):
+		elif first_person==null and order_ready(bay.order):
 			list.append(driver_action(bay,i))
 		list.append_array(repair_targets(i,decline))
 	for parked in parked_cars.values():
@@ -790,6 +824,11 @@ func context(decline := false) -> Dictionary:
 		return target("none","Chaise du bureau",chair,0)
 	var best := {}
 	var score := INF
+	var eye := Vector3.ZERO
+	var look := Vector3.ZERO
+	if first_person!=null:
+		eye = first_person.eye_position(player,seat_blend)
+		look = -first_person.view_basis().z
 	for option in candidates(decline):
 		if coop!=null and not coop.allows(option): continue
 		var p: Vector2 = option.at
@@ -798,14 +837,21 @@ func context(decline := false) -> Dictionary:
 		if option.get("from_front",false) and not in_front_of_car(option.bay):
 			var prompt := "Place-toi devant le capot" if option.work.zone=="Capot" else "Place-toi devant la voiture"
 			option = target("none",prompt,p,0,{"work":option.work,"bay":option.bay})
-		var alignment := facing.dot(player.direction_to(p)) if distance>0.05 else 1.0
-		if not decline and option.id!="none" and distance<=1.70 and option.get("work",{}).get("zone")=="Capot":
-			alignment = maxf(alignment,0.74)
-		if alignment<0.42:
-			if option.id!="call_checkout" or decline or distance>CUSTOMER_NEAR: continue
-			alignment = 0.42
-		var cost := distance+1.8*(1.0-alignment)
-		if option.id=="none": cost += 0.42 if option.has("work") else 0.12
+		var cost: float
+		if first_person!=null:
+			var point: Vector3 = option.get("aim_point",Vector3(p.x,option.get("aim_height",0.48),p.y))
+			var alignment := look.dot(eye.direction_to(point))
+			if alignment<0.957: continue
+			cost = distance*0.12+8.0*(1.0-alignment)
+		else:
+			var alignment := facing.dot(player.direction_to(p)) if distance>0.05 else 1.0
+			if not decline and option.id!="none" and distance<=1.70 and option.get("work",{}).get("zone")=="Capot":
+				alignment = maxf(alignment,0.74)
+			if alignment<0.42:
+				if option.id!="call_checkout" or decline or distance>CUSTOMER_NEAR: continue
+				alignment = 0.42
+			cost = distance+1.8*(1.0-alignment)
+			if option.id=="none": cost += 0.42 if option.has("work") else 0.12
 		if cost<score and site.can_see(player,p):
 			best = option
 			score = cost
@@ -2010,12 +2056,12 @@ func tick(dt: float) -> void:
 	if is_instance_valid(menu) and menu.visible:
 		menu.tick()
 		return
-	if Input.is_action_just_pressed("reset"):
+	if first_person==null and Input.is_action_just_pressed("reset"):
 		request_restart()
 		return
 	notice_time = maxf(0,notice_time-dt)
 	var was: String = run.mode
-	if was not in ["lost","won"]:
+	if first_person==null and was not in ["lost","won"]:
 		var guarantee_was_used: bool = run.guarantee_used
 		var room_rate := 1.0
 		for id in Map.WAITING_AMENITIES:
@@ -2073,8 +2119,9 @@ func tick(dt: float) -> void:
 	update_view(dt,player.distance_to(before)/maxf(dt,0.001))
 
 func update_view(dt: float, speed: float) -> void:
-	if Input.is_action_just_pressed("zoom_in"): change_zoom(1)
-	if Input.is_action_just_pressed("zoom_out"): change_zoom(-1)
+	if first_person==null:
+		if Input.is_action_just_pressed("zoom_in"): change_zoom(1)
+		if Input.is_action_just_pressed("zoom_out"): change_zoom(-1)
 	site.animate_bays(dt,action,coop.guest.get("action",{}) if coop!=null else {})
 	site.animate_personnel_door(player,dt,coop.guest.player if coop!=null and coop.online and not coop.guest.is_empty() else Vector2.INF)
 	sync_player(dt,speed)
@@ -2107,8 +2154,9 @@ func driving_input() -> Vector2:
 	return keyboard_movement()
 
 func walking_speed() -> float:
-	if held!="" or (pulling_cart and not run.purchases.has("light_cart")): return PlayerVisual.CARRY_SPEED
-	return PlayerVisual.WALK_SPEED
+	var carrying: bool = held!="" or (pulling_cart and not run.purchases.has("light_cart"))
+	var speed: float = PlayerVisual.CARRY_SPEED if carrying else PlayerVisual.WALK_SPEED
+	return speed*0.76 if first_person!=null else speed
 
 func aiming_input() -> Vector2:
 	var aim := Vector2(float(Input.is_physical_key_pressed(KEY_L))-float(Input.is_physical_key_pressed(KEY_J)),
@@ -2120,12 +2168,17 @@ func aiming_input() -> Vector2:
 	return aim
 
 func move_player(dt: float) -> void:
-	walk_with_input(dt,movement_input(),aiming_input())
+	var aim := aiming_input()
+	if first_person!=null:
+		first_person.turn(aim*dt*FirstPerson.LOOK_SPEED)
+		facing = first_person.forward()
+	walk_with_input(dt,movement_input(),aim)
 
 func walk_with_input(dt: float, move: Vector2, aim: Vector2) -> void:
 	if move.length()>0.2: office_seated = false
-	move = move.rotated(-game.camera.rotation.y)
-	aim = aim.rotated(-game.camera.rotation.y)
+	var yaw: float = first_person.yaw if first_person!=null else game.camera.rotation.y
+	move = move.rotated(-yaw)
+	aim = aim.rotated(-yaw)
 	velocity = velocity.move_toward(move.limit_length()*walking_speed(),dt*PlayerVisual.WALK_ACCELERATION)
 	for i in range(4):
 		var delta := velocity*dt/4
@@ -2133,8 +2186,9 @@ func walk_with_input(dt: float, move: Vector2, aim: Vector2) -> void:
 		if site.clear_at(attempt): player = attempt
 		attempt = player+Vector2(0,delta.y)
 		if site.clear_at(attempt): player = attempt
-	if aim.length()>0.1: facing = aim.normalized()
-	elif move.length()>0.07: facing = move.normalized()
+	if first_person==null:
+		if aim.length()>0.1: facing = aim.normalized()
+		elif move.length()>0.07: facing = move.normalized()
 
 func sync_player(dt: float,speed: float) -> void:
 	game.avatar.position = Vector3(player.x,0.08,player.y)
@@ -2144,6 +2198,8 @@ func sync_player(dt: float,speed: float) -> void:
 	if action.has("bay") and (action.id in ["wheel","drain"] or action.get("raised",false)):
 		work_height = site.bays[action.bay].lift_height*0.45
 	tool_holder.position = Vector3(0,0.93+work_height,0.38)
+	if first_person!=null and not pulling_cart:
+		tool_holder.global_position = first_person.eye_position(player,seat_blend)+first_person.view_basis()*Vector3(0.33,-0.33,-0.68)
 	if is_instance_valid(item_prop):
 		var yaw: float = Map.turn_yaw(held_turn)-game.avatar.rotation.y if held_turn>=0 and action.is_empty() else 0.0
 		item_prop.transform = Transform3D(Basis(Vector3.UP,yaw),Vector3(0,0.04,0))
@@ -2164,6 +2220,9 @@ func change_zoom(step: int) -> void:
 	zoom = clampi(zoom+step,0,2)
 
 func update_camera(blend: float) -> void:
+	if first_person!=null:
+		first_person.frame(game.camera,player,seat_blend)
+		return
 	var center := player
 	var view_size: float = GarageCamera.ZOOM_SIZES[0 if zoom<2 else 1]
 	if zoom==0 and driven_bay<0:
@@ -2242,7 +2301,7 @@ func work_marker(index: int, work: Dictionary) -> Dictionary:
 		var point: Vector2 = bay.lever_at
 		var caption := "Lever le pont" if work.lift==1 else "Baisser le pont"
 		if site.lift_moving(bay): caption = "Pont en mouvement"
-		return {"label":caption,"at":Vector3(point.x,1.20,point.y)}
+		return {"label":caption,"at":Vector3(point.x,1.43 if first_person!=null else 1.20,point.y)}
 	var material := material_marker(work.item,bay.order.id)
 	if not material.is_empty(): return material
 	if work.has("station"):
@@ -2261,6 +2320,7 @@ func work_location(index: int, work: Dictionary) -> Dictionary:
 		elif offset.y>1.6: label = "Arrière du véhicule"
 		else: label = "Côté gauche" if offset.x<0.0 else "Côté droit"
 	var height: float = bay.car.position.y+1.15 if work.get("on_car",true) else 1.25
+	if first_person!=null and label.begins_with("Roue "): height = bay.car.position.y+0.65
 	return {"label":label,"at":Vector3(point.x,height,point.y)}
 
 func ready_repair_actions(index: int, options: Array[Dictionary], plan: Dictionary) -> Array[Dictionary]:
@@ -2354,6 +2414,8 @@ func update_hud() -> void:
 	var state: String = {"day":run.clock_label(),"closing":"[color=#ffd38b]17 h 00[/color]",
 		"open":"Atelier libre","lost":"Garage fermé","won":"Partie gagnée"}[run.mode]
 	var header_text := "[color=#b4d8cd]GARAGE DAY  /  %s[/color]\n[b][font_size=21]Jour %d / 10  ·  %s[/font_size][/b]\n%s\n[color=#b6cbca]%d $  ·  %d clients en file[/color]" % [Map.LAYOUTS[layout][0],maxi(1,run.day),state,rating,run.cash,run.waiting.size()]
+	if first_person!=null:
+		header_text = "[color=#b4d8cd]LE PETIT ATELIER[/color]\n[b][font_size=18]Vue à la première personne[/font_size][/b]"
 	if header.text!=header_text: header.text = header_text
 	header.get_parent().position = Vector2(14,14)
 	var lines: Array[String] = ["[color=#b4d8cd][b]TABLEAU DE SERVICE[/b][/color]"]
@@ -2400,7 +2462,9 @@ func update_hud() -> void:
 				planned_work[i] = work
 				available_work[i] = choices
 			elif order_ready(order):
-				if "tires" in order.done and holds_used_tires():
+				if first_person!=null:
+					lines.append("[color=#a5dfaf]✓ Plaquettes avant remplacées[/color]")
+				elif "tires" in order.done and holds_used_tires():
 					var work := Repairs.hint("Poser les pneus usagés au sol","used_tire")
 					append_work_hint(lines,work,bay)
 					planned_work[i] = work
@@ -2409,7 +2473,7 @@ func update_hud() -> void:
 				elif nearest_exit_slot(bay)<0:
 					lines.append("[color=#ffd18c]Sortie · stationnement plein[/color]")
 				else: lines.append("[color=#a9dbb5]Prêt à sortir[/color]")
-			if order_ready(order):
+			if first_person==null and order_ready(order):
 				if order.paid:
 					var slot: int = bay.get("wait_slot",-1)
 					if slot>=0:
@@ -2446,6 +2510,8 @@ func update_hud() -> void:
 	ticket_panel.size = Vector2(ticket.custom_minimum_size.x+24,0)
 	ticket_panel.position = Vector2(view.x-ticket_panel.size.x-14,14)
 	var selected := context()
+	if first_person!=null:
+		first_person.indicate(not selected.is_empty() and selected.id!="none")
 	var marked_points: Array[Vector3] = []
 	for i in range(site.bays.size()):
 		var visible_cues: Array[Dictionary] = []
@@ -2461,6 +2527,7 @@ func update_hud() -> void:
 				visible_cues.append(cue)
 		site.show_work_markers(i,visible_cues,game.camera.size)
 	var instruction := ""
+	var placement_command := ""
 	if not selected.is_empty():
 		instruction = selected.label if selected.id=="none" else (("A / F" if selected.seconds==0 else "Maintenir A / F")+"  ·  "+selected.label)
 		if selected.id in ["approve","window_approve"]: instruction += "   ·   Maintenir B / Q pour reporter"
@@ -2478,9 +2545,11 @@ func update_hud() -> void:
 			command = "Y / E remettre en réserve"
 		if relocating!="": command = "X / R tourner   ·   Y / E poser   ·   B / Q annuler"
 		elif held!="" and not pulling_cart: command += "   ·   X / R tourner"
-		instruction += ("   ·   " if instruction!="" else "")+command
+		if first_person!=null: placement_command = command
+		else: instruction += ("   ·   " if instruction!="" else "")+command
 	if instruction=="":
-		if run.mode=="lost": instruction = "Garage fermé · View / F9 nouvelle partie"
+		if first_person!=null: instruction = "Approche-toi d’un poste et vise-le."
+		elif run.mode=="lost": instruction = "Garage fermé · View / F9 nouvelle partie"
 		elif run.mode=="won": instruction = "Partie gagnée · View / F9 nouvelle partie"
 		else: instruction = "Vise un poste avec le stick droit ou I / J / K / L."
 	var hint: String = {"day":"Accueille les clients, rentre leurs voitures et encaisse après les réparations.",
@@ -2507,6 +2576,12 @@ func update_hud() -> void:
 	if notice_time>0 and not driving: hint = notice
 	var shortcuts := "View / F9 nouvelle partie   ·   LB / RB zoom"
 	if driven_bay>=0: shortcuts = "B / Q descendre à l’arrêt   ·   LB / RB zoom"
+	if first_person!=null:
+		hint = "Suis le tableau de service pour remplacer les plaquettes avant."
+		if order_ready(site.bays[0].order): hint = "Abaisse le pont ou explore l’atelier."
+		if placement_command!="": hint = placement_command
+		if notice_time>0: hint = notice
+		shortcuts = "WASD / stick gauche · Souris / stick droit · Échap / Start menu"
 	var footer_text := "[center][color=%s][b]%s[/b][/color]\n%s\n[color=#a6bfbd][font_size=12]%s[/font_size][/color][/center]"%[
 		instruction_color,instruction,hint,shortcuts]
 	if footer.text!=footer_text: footer.text = footer_text
@@ -2514,7 +2589,7 @@ func update_hud() -> void:
 	var footer_panel: Control = footer.get_parent()
 	footer_panel.size = Vector2(footer.custom_minimum_size.x+24,0)
 	footer_panel.position = Vector2((view.x-footer_panel.size.x)/2,view.y-footer_panel.size.y-12)
-	site.select_corners.visible = not selected.is_empty()
+	site.select_corners.visible = first_person==null and not selected.is_empty()
 	if site.select_corners.visible:
 		var point: Vector2 = selected.at
 		var high: bool = selected.has("station") or (selected.has("bay") and point==site.bays[selected.bay].lever_at)
@@ -2543,6 +2618,7 @@ func update_action_ring() -> void:
 		var view: Vector2 = game.get_viewport().get_visible_rect().size
 		var ticket_panel: Control = ticket.get_parent()
 		var at: Vector2 = game.camera.unproject_position(Vector3(player.x,2.3,player.y))
+		if first_person!=null: at = view*0.5+Vector2(0,78)
 		at = at.clamp(Vector2(135,115),Vector2(maxf(135,view.x-135),maxf(115,view.y-125)))
 		ring.update_progress(progress/maxf(0.001,action.seconds),action.label,Color("#f1cf91"))
 		var ring_bounds: Rect2 = ring.content_rect()
