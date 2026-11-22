@@ -7,6 +7,16 @@ const DARK := Color("#293e46")
 const SILVER := Color("#b9c6c6")
 const OCHRE := Color("#ca9550")
 
+static func selection_corners(game: Node3D, parent: Node3D, color := Color("#ffe9a1")) -> Node3D:
+	var corners := Node3D.new()
+	parent.add_child(corners)
+	for side in [-1,1]:
+		for depth in [-1,1]:
+			game.box(corners,Vector3(0.22,0.012,0.05),Vector3(side*0.40,0,depth*0.48),color)
+			game.box(corners,Vector3(0.05,0.012,0.22),Vector3(side*0.48,0,depth*0.38),color)
+	corners.hide()
+	return corners
+
 static func material(color: Color, roughness := 0.60, metallic := 0.0) -> StandardMaterial3D:
 	var surface := StandardMaterial3D.new()
 	surface.albedo_color = color

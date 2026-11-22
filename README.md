@@ -38,7 +38,7 @@ Choisis **Nouvelle partie → Course de 12 h**, en local ou dans le navigateur. 
 
 Ouvre le **Plan d’arrêt** à la souris ou avec **Tab / Y** pour accéder au tableau. Choisis le box extérieur ou le garage, puis règle chaque intervention sur **Ignorer**, **Joueur** ou **Auto**. Les tâches automatiques sont plus longues et peuvent se dérouler en parallèle avec tes interventions. Le garage permet une réparation complète et laisse le box extérieur disponible.
 
-Déplace le mécano au **stick / WASD / flèches** et maintiens **A / F** sur les repères. Prends le pistolet à la pompe, puis branche-le sur la GT. Pour les pneus, lève chaque train avec son cric, change ses deux roues, puis abaisse-le. Récupère une clé près des outils pour réparer. Les deux crics et la pompe sont partagés entre les deux GT.
+Comme dans le garage de quartier, marche au **stick gauche / WASD / flèches**, vise au **stick droit / IJKL** et maintiens **A / F** sur le repère sélectionné. **LB / RB** ou **− / =** changent le zoom. Prends le pistolet à la pompe, puis branche-le sur la GT. Pour les pneus, lève chaque train avec son cric, change ses deux roues, puis abaisse-le. Récupère une clé près des outils pour réparer. Les deux crics et la pompe sont partagés entre les deux GT.
 
 Dans le navigateur, **Multijoueur → Créer une partie → Course de 12 h** partage la course. L’invité déplace un deuxième mécano et utilise les mêmes postes. **X / R** ouvre son plan d’arrêt pour la n° 81. La course peut être mise en pause et reprise tant que la session reste ouverte. Les sauvegardes d’atelier sont indépendantes.
 

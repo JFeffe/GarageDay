@@ -293,8 +293,8 @@ func show_multiplayer() -> void:
 	button(content,"Retour",show_home)
 
 func show_notes() -> void:
-	page("notes","Notes de mise à jour","0.1.8 · Aux stands")
-	content.add_child(label("Les 12 h sont accessibles par Nouvelle partie. Prépare chaque arrêt puis déplace ton mécano pour intervenir avec les crics, la pompe et les outils.",20,MINT))
+	page("notes","Notes de mise à jour","0.1.9 · Des stands à l’atelier")
+	content.add_child(label("Les 12 h reprennent la vue, le zoom et les commandes du garage de quartier. Le tableau de service et les repères d’intervention suivent la même présentation.",20,MINT))
 	button(content,"Retour",show_home)
 
 func show_message(message: String) -> void:

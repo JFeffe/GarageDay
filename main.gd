@@ -182,6 +182,7 @@ func start_endurance() -> void:
 		endurance.setup(randi())
 		endurance_crew.reset()
 		endurance_hud.close_plan()
+	endurance_stands.zoom = 0
 	resume_endurance()
 
 func endurance_in_progress() -> bool:
@@ -193,7 +194,7 @@ func resume_endurance() -> void:
 	workshop.engine.stream_paused = true
 	avatar.hide()
 	endurance_stands.show()
-	endurance_stands.frame(camera)
+	frame_endurance(1.0)
 	endurance_stands.update_cars(endurance,0.0)
 	endurance_hud.refresh()
 	game_menu.resume_game()
@@ -277,13 +278,23 @@ func tick_endurance(dt: float) -> void:
 	endurance_stands.update_cars(endurance,dt)
 	var field_input := endurance_hud.field_input()
 	var walk: Vector2 = workshop.movement_input() if field_input else Vector2.ZERO
-	endurance_crew.tick(dt,clock_rate,walk,field_input and Input.is_action_pressed("use_item"),guest,guest_can_work)
+	var aim: Vector2 = workshop.aiming_input() if field_input else Vector2.ZERO
+	endurance_crew.tick(dt,clock_rate,walk,field_input and Input.is_action_pressed("use_item"),guest,guest_can_work,aim)
+	if Input.is_action_just_pressed("zoom_in"): endurance_stands.change_zoom(1)
+	if Input.is_action_just_pressed("zoom_out"): endurance_stands.change_zoom(-1)
+	frame_endurance(minf(dt*7.0,1.0))
+	endurance_hud.update_action_rings(camera)
 	endurance_refresh += dt
 	if endurance_refresh>=0.10 or phase!=endurance.phase:
 		endurance_refresh = 0.0
 		endurance_hud.refresh()
 		if phase!=endurance.phase:
 			endurance_hud.focus_first()
+
+func frame_endurance(blend: float) -> void:
+	var crew: Array[Dictionary] = endurance_crew.workers
+	var partner: Vector2 = crew[1].point if endurance_crew.guest_present else Vector2.INF
+	endurance_stands.frame(camera,crew[0].point,partner,blend)
 
 func send_room_audio() -> void:
 	var available := room_audio.get_frames_available()

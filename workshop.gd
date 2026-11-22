@@ -8,13 +8,15 @@ const Ring := preload("res://workshop_ring.gd")
 const Catalog := preload("res://workshop_catalog.gd")
 const Repairs := preload("res://workshop_repairs.gd")
 const RepairPose := preload("res://workshop_repair_pose.gd")
+const GarageCamera := preload("res://garage_camera.gd")
+const HudStyle := preload("res://garage_hud_style.gd")
+const PlayerVisual := preload("res://player_visual.gd")
 const FORWARD_SPEED := 4.6
 const REVERSE_SPEED := 2.6
 const PARKING_MARGIN := 0.26
 const PARKING_SPEED := 1.25
 const CUSTOMER_NEAR := 1.4
 const RECEIPT_SECONDS := 2.2
-const GARAGE_CAMERA_ROTATION := Vector3(-63,0,0)
 const HUD_INTERVAL := 1.0/20.0
 const QUEUE_PATH_INTERVAL := 0.25
 
@@ -128,25 +130,9 @@ func engine_loop() -> AudioStreamWAV:
 func make_panel(width: float) -> RichTextLabel:
 	var panel := PanelContainer.new()
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color("#14272c")
-	style.border_color = Color("#3a5658")
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(8)
-	style.shadow_color = Color(0.04,0.09,0.1,0.25)
-	style.shadow_size = 4
-	style.content_margin_left = 12
-	style.content_margin_right = 12
-	style.content_margin_top = 12
-	style.content_margin_bottom = 12
-	panel.add_theme_stylebox_override("panel",style)
+	panel.add_theme_stylebox_override("panel",HudStyle.panel_style())
 	ui.add_child(panel)
-	var label := RichTextLabel.new()
-	label.bbcode_enabled = true
-	label.fit_content = true
-	label.scroll_active = false
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.custom_minimum_size.x = width
+	var label := HudStyle.rich_label(width)
 	panel.add_child(label)
 	return label
 
@@ -2121,24 +2107,26 @@ func driving_input() -> Vector2:
 	return keyboard_movement()
 
 func walking_speed() -> float:
-	if held!="" or (pulling_cart and not run.purchases.has("light_cart")): return 4.0
-	return 4.9
+	if held!="" or (pulling_cart and not run.purchases.has("light_cart")): return PlayerVisual.CARRY_SPEED
+	return PlayerVisual.WALK_SPEED
 
-func move_player(dt: float) -> void:
-	var move := movement_input()
+func aiming_input() -> Vector2:
 	var aim := Vector2(float(Input.is_physical_key_pressed(KEY_L))-float(Input.is_physical_key_pressed(KEY_J)),
 		float(Input.is_physical_key_pressed(KEY_K))-float(Input.is_physical_key_pressed(KEY_I)))
 	var pads := Input.get_connected_joypads()
 	if not pads.is_empty():
 		var right := Vector2(Input.get_joy_axis(pads[0],JOY_AXIS_RIGHT_X),Input.get_joy_axis(pads[0],JOY_AXIS_RIGHT_Y))
 		if right.length()>0.26: aim = right
-	walk_with_input(dt,move,aim)
+	return aim
+
+func move_player(dt: float) -> void:
+	walk_with_input(dt,movement_input(),aiming_input())
 
 func walk_with_input(dt: float, move: Vector2, aim: Vector2) -> void:
 	if move.length()>0.2: office_seated = false
 	move = move.rotated(-game.camera.rotation.y)
 	aim = aim.rotated(-game.camera.rotation.y)
-	velocity = velocity.move_toward(move.limit_length()*walking_speed(),dt*30.0)
+	velocity = velocity.move_toward(move.limit_length()*walking_speed(),dt*PlayerVisual.WALK_ACCELERATION)
 	for i in range(4):
 		var delta := velocity*dt/4
 		var attempt := player+Vector2(delta.x,0)
@@ -2176,20 +2164,11 @@ func change_zoom(step: int) -> void:
 	zoom = clampi(zoom+step,0,2)
 
 func update_camera(blend: float) -> void:
-	var rotation := GARAGE_CAMERA_ROTATION
-	var angles := rotation * (PI/180.0)
-	var offset := Basis.from_euler(angles)*Vector3(0,0,35)
 	var center := player
-	var view_size := 13.8 if zoom<2 else 9.2
+	var view_size: float = GarageCamera.ZOOM_SIZES[0 if zoom<2 else 1]
 	if zoom==0 and driven_bay<0:
-		var viewport: Vector2 = game.get_viewport().get_visible_rect().size
-		var aspect := viewport.x/maxf(1.0,viewport.y)
 		var footprint := Vector2(site.size.x+2.0,site.size.y+Map.NORTH_APRON+2.1)
-		var c := cos(angles.y)
-		var s := absf(sin(angles.y))
-		var width := footprint.x*c+footprint.y*s
-		var depth := footprint.y*c+footprint.x*s
-		view_size = maxf(width/maxf(0.1,aspect)+2.0,depth*absf(sin(angles.x))+2.2)
+		view_size = GarageCamera.overview_size(footprint,GarageCamera.aspect(game.camera))
 		center = site.playable_area().get_center()
 	elif driven_bay>=0:
 		var yaw: float = site.bays[driven_bay].car.rotation.y
@@ -2200,14 +2179,9 @@ func update_camera(blend: float) -> void:
 			center = center.lerp(bay_center,0.33)
 	if coop!=null and coop.online and not coop.guest.is_empty() and (zoom!=0 or driven_bay>=0):
 		var partner: Vector2 = coop.guest.player
-		var separation := (center-partner).abs()
-		var viewport: Vector2 = game.get_viewport().get_visible_rect().size
-		var aspect := viewport.x/maxf(1.0,viewport.y)
-		view_size = maxf(view_size,maxf(separation.x/maxf(0.1,aspect),separation.y*absf(sin(angles.x)))+4.0)
+		view_size = GarageCamera.fit_pair(view_size,center-partner,GarageCamera.aspect(game.camera))
 		center = center.lerp(partner,0.5)
-	game.camera.rotation_degrees = game.camera.rotation_degrees.lerp(rotation,blend)
-	game.camera.position = game.camera.position.lerp(Vector3(center.x,0,center.y)+offset,blend)
-	game.camera.size = lerpf(game.camera.size,view_size,blend)
+	GarageCamera.place(game.camera,center,view_size,blend)
 
 
 func next_vehicle_work(index: int, options: Array[Dictionary] = []) -> Dictionary:

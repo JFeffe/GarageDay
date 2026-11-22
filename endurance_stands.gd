@@ -3,6 +3,7 @@ extends Node3D
 const Race := preload("res://endurance_race.gd")
 const Meshes := preload("res://workshop_miniature.gd")
 const Props := preload("res://workshop_neighborhood.gd")
+const GarageCamera := preload("res://garage_camera.gd")
 const GT_MODELS := ["res://assets/endurance/gt-avant.glb", "res://assets/endurance/gt4.glb"]
 const CREAM := Color("#f7edd5")
 const WALL := Color("#516d6b")
@@ -24,6 +25,7 @@ var body_height: Array[float] = []
 var obstacles: Array[Rect2] = []
 var jacks: Array[Node3D] = []
 var hose: Array[MeshInstance3D] = []
+var zoom := 0
 
 func build() -> void:
 	block(Vector3(36.7,0.62,27.95),Vector3(0,-0.357,2.48),Color("#607571"),0.12)
@@ -166,10 +168,20 @@ func add_gt(index: int) -> void:
 	badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	car.add_child(badge)
 
-func frame(camera: Camera3D) -> void:
-	camera.rotation_degrees = Vector3(-90,0,0)
-	camera.position = Vector3(0,40,2.2)
-	camera.size = 26.6
+func change_zoom(step: int) -> void:
+	zoom = clampi(zoom+step,0,GarageCamera.ZOOM_SIZES.size())
+
+func frame(camera: Camera3D, player: Vector2, partner: Vector2, blend: float) -> void:
+	var ratio := GarageCamera.aspect(camera)
+	var center := Vector2(0,2.48)
+	var view_size := GarageCamera.overview_size(Vector2(36.7,27.95),ratio)
+	if zoom>0:
+		center = player
+		view_size = GarageCamera.ZOOM_SIZES[zoom-1]
+		if partner!=Vector2.INF:
+			view_size = GarageCamera.fit_pair(view_size,player-partner,ratio)
+			center = player.lerp(partner,0.5)
+	GarageCamera.place(camera,center,view_size,blend)
 
 func build_service_equipment() -> void:
 	obstacles.append(Rect2(PUMP-Vector2(0.45,0.34),Vector2(0.9,0.68)))

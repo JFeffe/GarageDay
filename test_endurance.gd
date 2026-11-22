@@ -2,6 +2,7 @@ extends SceneTree
 
 const Race := preload("res://endurance_race.gd")
 const Crew := preload("res://endurance_crew.gd")
+const GarageCamera := preload("res://garage_camera.gd")
 var failures: Array[String] = []
 
 func _initialize() -> void:
@@ -177,8 +178,18 @@ func check_local_menu() -> void:
 			"Y puis A doit ouvrir le plan d’arrêt et attendre la confirmation.")
 		await press_pad(JOY_BUTTON_B)
 		check(not hud.planner.visible and not game.endurance.cars[0].called,"Annuler un plan ne doit pas appeler la GT.")
-		check(is_equal_approx(game.camera.rotation_degrees.x,-90.0) and is_zero_approx(game.camera.rotation_degrees.y),
-			"La caméra d’endurance doit regarder droit vers le sol.")
+		check(game.camera.rotation_degrees.is_equal_approx(GarageCamera.ROTATION),
+			"L’endurance doit reprendre la perspective du garage de quartier.")
+		check(not hud.standings_rows.visible,"Le classement doit pouvoir se replier pour dégager la vue.")
+		hud.standings_button.pressed.emit()
+		check(hud.standings_rows.visible and hud.scores.size()==10,"Le classement complet doit rester consultable.")
+		hud.standings_button.pressed.emit()
+		var overview: float = game.camera.size
+		await press_pad(JOY_BUTTON_RIGHT_SHOULDER)
+		await create_timer(0.2).timeout
+		check(game.endurance_stands.zoom==1 and game.camera.size<overview,"RB doit rapprocher la caméra du mécano.")
+		await press_pad(JOY_BUTTON_LEFT_SHOULDER)
+		check(game.endurance_stands.zoom==0,"LB doit revenir au plan d’ensemble.")
 		var worker: Dictionary = game.endurance_crew.workers[0]
 		var spawn: Vector2 = worker.point
 		var key := InputEventKey.new()
@@ -225,6 +236,15 @@ func check_world_tools(game: Node3D) -> void:
 	car.tires = 0.49
 	check(race.confirm_stop(0,{"fuel":Race.Mode.MANUAL,"tires":Race.Mode.MANUAL},false),"Le joueur doit confirmer les opérations avant de travailler.")
 	game.endurance_stands.update_cars(race,0.0)
+	var pump: Vector2 = crew.stands.PUMP
+	crew.workers[0].point = pump+Vector2(1.65,0.15)
+	crew.workers[0].velocity = Vector2.ZERO
+	crew.move_worker(0,0.016,Race.PIT_RATE,Vector2.ZERO,false,Vector2.RIGHT)
+	check(crew.workers[0].target.is_empty(),"Viser ailleurs ne doit pas sélectionner la pompe à distance.")
+	crew.move_worker(0,0.016,Race.PIT_RATE,Vector2.ZERO,true,Vector2.LEFT)
+	game.endurance_hud.update_action_rings(game.camera)
+	check(crew.workers[0].target.get("action")=="nozzle" and crew.workers[0].outline.visible
+		and game.endurance_hud.work_rings[0].visible,"Viser et intervenir doit afficher les repères du garage de quartier.")
 	try_station(crew,"nozzle")
 	check(crew.workers[0].held=="nozzle","Le pistolet doit se prendre à la pompe.")
 	try_station(crew,"fuel")
@@ -254,6 +274,7 @@ func try_station(crew: Crew, action: String, axle := -1, wheel := -1) -> void:
 		if site.action!=action or site.axle!=axle or site.wheel!=wheel: continue
 		check(crew.stands.walkable(site.point,crew.race),"Le repère de l’intervention doit être accessible à pied : "+site.title)
 		crew.workers[0].point = site.point
+		crew.workers[0].velocity = Vector2.ZERO
 		crew.move_worker(0,0.016,Race.PIT_RATE,Vector2.ZERO,false)
 		for i in range(ceili(site.duration*12.0/Race.PIT_RATE)):
 			crew.move_worker(0,1.0/12.0,Race.PIT_RATE,Vector2.ZERO,true)
@@ -267,5 +288,5 @@ func run_tests() -> void:
 	check_complete_race()
 	await check_local_menu()
 	for failure in failures: push_error(failure)
-	if failures.is_empty(): print("PASS · choix des 12 h, caméra de dessus, déplacements, plans, crics, pompe, outils, interventions parallèles et invité.")
+	if failures.is_empty(): print("PASS · perspective et zoom du garage, HUD, visée, plans, crics, pompe, interventions parallèles et invité.")
 	quit(0 if failures.is_empty() else 1)

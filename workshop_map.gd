@@ -644,15 +644,9 @@ func make_visitor(at: Vector2, color: Color) -> Dictionary:
 	return {"root":person,"meter":meter,"receipt":receipt,"hands":hands,"magazine":magazine,"snack":snack}
 
 func build_selection() -> void:
-	select_corners = Node3D.new()
-	add_child(select_corners)
-	for side in [-1,1]:
-		for depth in [-1,1]:
-			game.box(select_corners,Vector3(0.22,0.012,0.05),Vector3(side*0.40,0,depth*0.48),Color("#ffe9a1"))
-			game.box(select_corners,Vector3(0.05,0.012,0.22),Vector3(side*0.48,0,depth*0.38),Color("#ffe9a1"))
+	select_corners = Miniature.selection_corners(game,self)
 	preview = game.box(self,Vector3(0.95,0.022,0.95),Vector3.ZERO,Color("#77b49c"))
 	preview.hide()
-	select_corners.hide()
 
 func center(tile: Vector2i) -> Vector2:
 	return Vector2(tile)+Vector2(0.5,0.5)

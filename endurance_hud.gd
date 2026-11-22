@@ -2,11 +2,13 @@ extends CanvasLayer
 
 const Race := preload("res://endurance_race.gd")
 const Crew := preload("res://endurance_crew.gd")
+const HudStyle := preload("res://garage_hud_style.gd")
+const Ring := preload("res://workshop_ring.gd")
 const CREAM := Color("#fff3d9")
-const MINT := Color("#a6ccc3")
-const GOLD := Color("#ffc47e")
-const BLUE := Color("#a8edf5")
-const BRIEFING := "Prépare les arrêts de tes deux GT. Choisis les interventions à faire toi-même ou à déléguer à l’équipe.\n\nWASD / stick pour marcher · A / F à maintenir pour travailler. Tab / Y pour gérer les arrêts."
+const MINT := Color("#b4d8cd")
+const GOLD := Color("#ffd99a")
+const BLUE := Color("#9be3ff")
+const BRIEFING := "Prépare les arrêts de tes deux GT. Pour chaque intervention, choisis qui s’en occupe.\n\nStick gauche / WASD pour marcher · stick droit / IJKL pour viser · A / F à maintenir pour travailler."
 const BUTTONS := {
 	Race.State.TRACK: ["plan", "delay", "pace"],
 	Race.State.ENTRY: ["plan", "", ""],
@@ -53,9 +55,14 @@ var race: RefCounted
 var crew: Crew
 var start_button: Button
 var speed_button: Button
-var headline: Label
-var status: Label
-var radio: Label
+var standings_button: Button
+var headline: RichTextLabel
+var footer: RichTextLabel
+var left_panel: PanelContainer
+var right_panel: PanelContainer
+var footer_panel: PanelContainer
+var standings_rows: VBoxContainer
+var equipment: Label
 var circuit: Circuit
 var scores: Array[Label] = []
 var cards: Array[Dictionary] = []
@@ -75,9 +82,7 @@ var planner_pick := 0
 var planner_for_guest := false
 var draft: Dictionary = {}
 var send_to_garage := false
-var work_hints: Array[Label] = []
-var work_bars: Array[ProgressBar] = []
-var crew_panel: PanelContainer
+var work_rings: Array[Control] = []
 
 signal restart_requested
 signal exit_requested
@@ -92,64 +97,54 @@ func build(session: RefCounted, mechanics: Crew) -> void:
 	layout.theme = make_theme()
 	add_child(layout)
 
-	var left := anchored_panel(layout,Vector4(0,0,0,0),Vector4(15,14,237,0))
-	var left_content := column(left)
-	left_content.add_child(text("12 H D’ENDURANCE",20))
-	headline = text("",29,GOLD)
+	left_panel = anchored_panel(layout,Vector4(0,0,0,0),Vector4(14,14,308,14))
+	var left_content := column(left_panel)
+	headline = HudStyle.rich_label()
 	left_content.add_child(headline)
-	status = text("",14,MINT)
-	left_content.add_child(status)
 	circuit = Circuit.new()
-	circuit.custom_minimum_size = Vector2(188,99)
+	circuit.custom_minimum_size = Vector2(0,76)
+	circuit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	circuit.race = race
 	circuit.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	left_content.add_child(circuit)
-	speed_button = button(left_content,"",func() -> void:
+	var commands := HBoxContainer.new()
+	commands.add_theme_constant_override("separation",6)
+	left_content.add_child(commands)
+	speed_button = button(commands,"",func() -> void:
 		race.speed_up = not race.speed_up
 		refresh()
 		release_focus())
-
-	var right := anchored_panel(layout,Vector4(1,0,1,0),Vector4(-240,14,-15,0))
-	var right_content := column(right)
-	right_content.add_child(text("CLASSEMENT",17))
+	standings_button = button(commands,"Classement",toggle_standings)
+	standings_rows = column(left_content)
 	for i in race.cars.size():
 		var row := text("",14)
-		right_content.add_child(row)
+		standings_rows.add_child(row)
 		scores.append(row)
+	standings_rows.hide()
 
-	var bottom := VBoxContainer.new()
-	anchor(bottom,Vector4(0,1,1,1),Vector4(15,0,-15,-14))
-	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bottom.add_theme_constant_override("separation",6)
-	layout.add_child(bottom)
-	var feed := panel(bottom)
-	radio = text("",15,MINT)
-	radio.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	radio.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	feed.add_child(radio)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation",10)
-	bottom.add_child(row)
-	for i in range(2): build_card(row,i)
-	crew_panel = panel(bottom)
-	var crew_row := HBoxContainer.new()
-	crew_row.add_theme_constant_override("separation",15)
-	crew_panel.add_child(crew_row)
+	right_panel = anchored_panel(layout,Vector4(1,0,1,0),Vector4(-373,14,-14,14))
+	var right_content := column(right_panel)
+	right_content.add_theme_constant_override("separation",8)
+	var title := HudStyle.rich_label()
+	title.text = "[color=#b4d8cd][b]TABLEAU DE SERVICE[/b][/color]"
+	right_content.add_child(title)
+	for i in range(2): build_card(right_content,i)
+	equipment = text("",15,MINT)
+	equipment.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	right_content.add_child(equipment)
+
+	footer_panel = anchored_panel(layout,Vector4(0.5,1,0.5,1),Vector4(-357,-12,357,-12))
+	footer_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	footer = HudStyle.rich_label()
+	footer_panel.add_child(footer)
 	for i in range(2):
-		var info := VBoxContainer.new()
-		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		info.add_theme_constant_override("separation",3)
-		crew_row.add_child(info)
-		var hint := text("",14,GOLD if i==0 else BLUE)
-		hint.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		info.add_child(hint)
-		work_hints.append(hint)
-		var fill := ProgressBar.new()
-		fill.show_percentage = false
-		fill.custom_minimum_size.y = 3
-		info.add_child(fill)
-		work_bars.append(fill)
+		var ring := Ring.new()
+		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		layout.add_child(ring)
+		ring.hide()
+		work_rings.append(ring)
+	layout.resized.connect(resize_hud.bind(layout))
+	resize_hud(layout)
 
 	briefing = anchored_panel(layout,Vector4(0.5,0.5,0.5,0.5),Vector4(-234,-154,234,0))
 	var brief := column(briefing)
@@ -167,6 +162,18 @@ func build(session: RefCounted, mechanics: Crew) -> void:
 	exit_button = button(brief,"Retour à l’accueil",func() -> void: exit_requested.emit())
 	build_planner(layout)
 	refresh()
+
+func resize_hud(layout: Control) -> void:
+	right_panel.offset_left = -14.0-minf(359,layout.size.x*0.41)
+	var half_width := minf(714.0,maxf(260.0,layout.size.x-20.0))/2.0
+	footer_panel.offset_left = -half_width
+	footer_panel.offset_right = half_width
+
+func toggle_standings() -> void:
+	standings_rows.visible = not standings_rows.visible
+	standings_button.text = "Masquer" if standings_rows.visible else "Classement"
+	left_panel.size.y = 0.0
+	release_focus()
 
 func build_planner(layout: Control) -> void:
 	planner = anchored_panel(layout,Vector4(0.5,0.5,0.5,0.5),Vector4(-232,-210,232,0))
@@ -227,19 +234,14 @@ func close_plan() -> void:
 func make_theme() -> Theme:
 	var theme := Theme.new()
 	theme.default_font_size = 15
-	var background := StyleBoxFlat.new()
-	background.bg_color = Color("#14292df5")
-	background.border_color = Color("#52736d")
-	background.set_border_width_all(1)
-	background.set_corner_radius_all(8)
-	for edge in [SIDE_LEFT,SIDE_RIGHT]: background.set_content_margin(edge,11.0)
-	for edge in [SIDE_TOP,SIDE_BOTTOM]: background.set_content_margin(edge,8.0)
-	theme.set_stylebox("panel","PanelContainer",background)
+	theme.set_stylebox("panel","PanelContainer",HudStyle.panel_style())
 	for state in ["normal","hover","pressed","disabled"]:
 		var action := StyleBoxFlat.new()
-		action.bg_color = Color("#213b3f") if state=="normal" else Color("#315750")
-		if state=="disabled": action.bg_color = Color("#1d292e")
-		action.set_corner_radius_all(4)
+		action.bg_color = Color("#213c43") if state=="normal" else Color("#285353")
+		if state=="disabled": action.bg_color = Color("#172c32")
+		action.border_color = Color("#46666b") if state=="normal" else Color("#4d756f")
+		action.set_border_width_all(1)
+		action.set_corner_radius_all(6)
 		action.content_margin_left = 4
 		action.content_margin_right = 4
 		theme.set_stylebox(state,"Button",action)
@@ -251,12 +253,6 @@ func make_theme() -> Theme:
 	theme.set_stylebox("focus","Button",focus)
 	theme.set_color("font_color","Button",CREAM)
 	theme.set_color("font_disabled_color","Button",Color("#8da09e"))
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = GOLD
-	theme.set_stylebox("fill","ProgressBar",fill)
-	var empty := StyleBoxFlat.new()
-	empty.bg_color = Color("#213638")
-	theme.set_stylebox("background","ProgressBar",empty)
 	return theme
 
 func anchor(control: Control, edges: Vector4, offsets: Vector4) -> void:
@@ -304,22 +300,17 @@ func button(parent: Control, title: String, callback: Callable) -> Button:
 	parent.add_child(control)
 	return control
 
-func build_card(parent: HBoxContainer,index: int) -> void:
-	var frame := panel(parent)
-	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var body := column(frame)
-	var title := text("",21,race.cars[index].color)
+func build_card(parent: VBoxContainer,index: int) -> void:
+	var body := column(parent)
+	var title := text("",17,race.cars[index].color)
 	var metrics := text("",15)
 	var relief := text("",14,MINT)
 	var prompt := text("",15,MINT)
 	for label in [title,metrics,relief,prompt]:
-		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		body.add_child(label)
-	var actions := GridContainer.new()
-	actions.columns = 3
-	actions.custom_minimum_size.y = 30
-	actions.add_theme_constant_override("h_separation",5)
-	actions.add_theme_constant_override("v_separation",5)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation",5)
 	body.add_child(actions)
 	var options: Array[Button] = []
 	for i in range(3):
@@ -344,10 +335,11 @@ func activate(index: int, slot: int) -> void:
 func refresh() -> void:
 	var on_grid: bool = race.phase==Race.Phase.GRID
 	var finished: bool = race.phase==Race.Phase.FINISH
-	headline.text = race.clock()
 	var left: float = Race.DURATION-race.elapsed
 	var rate: float = Race.PIT_RATE if planner.visible else race.rate()
-	status.text = "%d h %02d restantes · ×%d" % [floori(left/3600.0),floori(left/60.0)%60,roundi(rate)]
+	var left_text := "%d h %02d restantes  ·  ×%d" % [floori(left/3600.0),floori(left/60.0)%60,roundi(rate)]
+	var clock_text: String = "Sur la grille" if on_grid else "Drapeau à damier" if finished else race.clock()
+	set_rich_text(headline,"[color=#b4d8cd]GARAGE DAY  /  LES 12 H[/color]\n[b][font_size=21]%s[/font_size][/b]\n[color=#b6cbca]%s[/color]" % [clock_text,left_text])
 	speed_button.disabled = on_grid or finished
 	speed_button.text = "En piste ×48" if race.speed_up else "En piste ×24"
 	speed_button.tooltip_text = "Accélérer ou ralentir le temps en piste. Les arrêts ralentissent l’horloge."
@@ -363,21 +355,15 @@ func refresh() -> void:
 		scores[i].text = "%2d   %02d  %s  ·  %s" % [i+1,car.number,car.team,suffix]
 		scores[i].add_theme_color_override("font_color",car.color if car.ours else CREAM)
 	for i in range(2): refresh_card(i,standings.find(race.cars[i])+1)
-	var controls := "WASD / stick · A / F intervenir · Tab / Y gérer les arrêts"
-	radio.text = race.radio[0] if not race.radio.is_empty() else controls
-	radio.tooltip_text = "\n".join(race.radio)
+	equipment.text = "EN MAIN   "+crew.held_item(0)
+	right_panel.size.y = 0.0
+	refresh_footer(on_grid or finished)
 	briefing.visible = on_grid or finished
 	start_button.visible = on_grid
 	restart_button.visible = finished
 	exit_button.visible = finished
 	briefing_title.text = "Drapeau à damier" if finished else "Les 12 h de Garage Day"
 	if on_grid: briefing_copy.text = BRIEFING
-	for i in range(2):
-		var show_work := not (on_grid or finished) and (i==0 or guest_online)
-		work_hints[i].get_parent().visible = show_work
-		work_hints[i].text = crew.instruction(i) if show_work else ""
-		work_bars[i].value = crew.progress(i) if show_work else 0.0
-	crew_panel.visible = not (on_grid or finished)
 	if finished and planner.visible: close_plan()
 	if finished:
 		var results := PackedStringArray()
@@ -385,6 +371,40 @@ func refresh() -> void:
 			var result := "abandon" if car.state==Race.State.OUT else "P%d" % (standings.find(car)+1)
 			results.append("N° %d · %s · %d tours · %d arrêts" % [car.number,result,maxi(0,floori(car.distance)),car.stops])
 		briefing_copy.text = "\n".join(results)
+
+func refresh_footer(brief: bool) -> void:
+	var instruction := "Appelle les GT et prépare leurs arrêts." if brief else crew.instruction(0)
+	var event: String = "Les deux GT de Garage Day se préparent pour le départ." if race.radio.is_empty() else race.radio[0]
+	var guest := "\n[color=#9be3ff]J2 · %s[/color]" % crew.instruction(1) if guest_online and not brief else ""
+	set_rich_text(footer,"[center][color=#ffd99a][b]%s[/b][/color]%s\n%s\n[color=#a6bfbd][font_size=12]Tab / Y plan d’arrêt   ·   LB / RB zoom[/font_size][/color][/center]" % [instruction,guest,event])
+	# RichTextLabel's minimum height changes when the radio or a crew hint wraps.
+	footer_panel.offset_top = -12.0-footer.get_content_height()-24.0
+	footer_panel.offset_bottom = -12.0
+
+func set_rich_text(label: RichTextLabel, content: String) -> void:
+	if label.text!=content: label.text = content
+
+func update_action_rings(camera: Camera3D) -> void:
+	var view := get_viewport().get_visible_rect().size
+	for i in range(work_rings.size()):
+		var ring = work_rings[i]
+		var amount := crew.progress(i)
+		if amount<=0.0 or planner.visible or race.phase!=Race.Phase.RACE or (i==1 and not guest_online):
+			ring.hide()
+			continue
+		var point: Vector2 = crew.workers[i].point
+		var head := camera.unproject_position(Vector3(point.x,1.6,point.y))
+		var at := head-Vector2(0,79)
+		if at.y<92.0: at = head+Vector2(135 if head.x<view.x/2.0 else -135,5)
+		at = at.clamp(Vector2(135,115),Vector2(maxf(135,view.x-135),maxf(115,view.y-125)))
+		ring.update_progress(amount,crew.workers[i].target.title,GOLD if i==0 else BLUE)
+		var bounds: Rect2 = ring.content_rect()
+		if Rect2(at+bounds.position,bounds.size).intersects(right_panel.get_rect()):
+			at.x = maxf(-bounds.position.x,right_panel.position.x-bounds.end.x-8)
+		if Rect2(at+bounds.position,bounds.size).intersects(left_panel.get_rect()):
+			at.x = minf(view.x-bounds.end.x,left_panel.get_rect().end.x-bounds.position.x+8)
+		ring.position = at
+		ring.show()
 
 func refresh_card(index: int, position: int) -> void:
 	var car: Dictionary = race.cars[index]
@@ -403,9 +423,10 @@ func refresh_card(index: int, position: int) -> void:
 		control.visible = action!="" and race.phase==Race.Phase.RACE
 		control.disabled = not race.allowed(car,action)
 		var title := Race.action_label(action)
-		if action=="pace": title = "Rythme · "+Race.PACE_NAMES[car.pace]
+		if action=="pace": title = Race.PACE_NAMES[car.pace]
 		if action=="plan" and car.called: title = "Modifier l’arrêt" if not car.orders.is_empty() else "Confirmer l’arrêt"
-		control.text = title
+		control.tooltip_text = "Rythme · "+title if action=="pace" else title
+		control.text = "Décaler +1 t." if action=="delay" else title
 
 func describe(car: Dictionary) -> String:
 	if race.phase==Race.Phase.GRID: return "Sur la grille · deux pilotes par voiture"
@@ -447,6 +468,7 @@ func focus_dashboard() -> void:
 				control.grab_focus()
 				return
 	if not speed_button.disabled: speed_button.grab_focus()
+	else: standings_button.grab_focus()
 
 func release_focus() -> void:
 	var focused := get_viewport().gui_get_focus_owner()

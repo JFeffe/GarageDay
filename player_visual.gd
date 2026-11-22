@@ -1,5 +1,9 @@
 extends RefCounted
 
+const WALK_SPEED := 4.9
+const CARRY_SPEED := 4.0
+const WALK_ACCELERATION := 30.0
+
 var model: Node3D
 var avatar: Node3D
 var skeleton: Skeleton3D
