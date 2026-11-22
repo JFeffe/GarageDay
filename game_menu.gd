@@ -302,8 +302,8 @@ func show_multiplayer() -> void:
 	button(content,"Retour",show_home)
 
 func show_notes() -> void:
-	page("notes","Notes de mise à jour","0.1.11 · Le muret des stands")
-	content.add_child(label("Le contrôle est à l’extérieur du garage, avec les deux GT côte à côte et le chrono toujours visible. LT / RT règle la vitesse en piste. Une jauge montre la progression des interventions.",20,MINT))
+	page("notes","Notes de mise à jour","0.1.12 · La course en direct")
+	content.add_child(label("Un nouvel écran suit les dix GT sur le circuit. Le direct et le classement restent visibles au poste de contrôle, y compris pendant la préparation d’un arrêt.",20,MINT))
 	button(content,"Retour",show_home)
 
 func show_message(message: String) -> void:

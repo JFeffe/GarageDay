@@ -179,6 +179,14 @@ func check_local_menu() -> void:
 		await press_pad(JOY_BUTTON_A)
 		await frames()
 		check(game.endurance.phase==Race.Phase.RACE,"A doit donner le départ depuis le briefing.")
+		var screen = game.endurance_stands.screen_circuit
+		check(screen.race==game.endurance and screen.live and screen.get_viewport()==game.endurance_stands.control_screen,
+			"L’écran physique doit afficher le circuit de la course en cours.")
+		var ours: Vector2 = screen.car_transform(0).origin
+		var rival: Vector2 = screen.car_transform(5).origin
+		game.endurance.advance(4.0)
+		check(screen.car_transform(0).origin.distance_to(ours)>1.0 and screen.car_transform(5).origin.distance_to(rival)>1.0,
+			"L’écran doit faire avancer la GT de l’équipe et les rivales avec la simulation.")
 		check(game.endurance.rate()==24.0,"Le rythme initial en piste doit être ×24.")
 		await move_axis(JOY_AXIS_TRIGGER_RIGHT,0.8)
 		check(game.endurance.rate()==48.0,"RT doit accélérer le temps à ×48.")
@@ -203,6 +211,8 @@ func check_local_menu() -> void:
 		check(hud.control_panel.visible and not hud.left_panel.visible,"Y doit ouvrir le panneau de gauche au poste de contrôle.")
 		check(hud.clock_panel.visible and hud.service_details[0].is_visible_in_tree() and hud.service_details[1].is_visible_in_tree(),
 			"Les deux GT et le chrono doivent rester visibles au poste.")
+		check(hud.live_circuit.is_visible_in_tree() and hud.control_scores.size()==10
+			and hud.control_scores[9].is_visible_in_tree(),"Le direct et les dix rangs doivent figurer dans la console.")
 		await move_axis(JOY_AXIS_LEFT_X,0.75)
 		await move_axis(JOY_AXIS_LEFT_X,0.0)
 		check(hud.selected_car==1,"Le stick gauche doit sélectionner la n° 81 au contrôle.")
@@ -214,6 +224,18 @@ func check_local_menu() -> void:
 			"Y puis A doit ouvrir le plan d’arrêt et attendre la confirmation.")
 		check(hud.clock_panel.visible and hud.service_details[1].is_visible_in_tree(),
 			"Le chrono et les deux voitures doivent rester visibles pendant la planification.")
+		var last_car: Dictionary = game.endurance.cars[9]
+		var previous_distance: float = last_car.distance
+		last_car.distance = 2.0
+		hud.refresh()
+		check(hud.live_circuit.is_visible_in_tree() and hud.control_scores[0].is_visible_in_tree()
+			and hud.control_scores[0].text.contains("96"),"Le classement doit rester visible et s’actualiser dans le plan.")
+		await frames()
+		check(hud.control_panel.position.y>hud.clock_panel.get_rect().end.y,
+			"Le panneau de stratégie doit laisser le chrono dégagé.")
+		check(hud.service_status[0].size.y>=48.0 and not hud.service_status[0].text.is_empty(),
+			"Le suivi des deux GT doit garder de la place pour l’état de service.")
+		last_car.distance = previous_distance
 		var previous_mode: int = hud.draft.fuel
 		await press_pad(JOY_BUTTON_DPAD_RIGHT)
 		check(hud.draft.fuel!=previous_mode,"Droite doit modifier le mode de l’intervention sélectionnée.")
@@ -261,6 +283,8 @@ func check_local_menu() -> void:
 		guest[8] = 4
 		hud.guest_input(guest)
 		check(hud.planner.visible and hud.planner_index==1,"A ouvre le plan de la n° 81 à l’invité.")
+		check(hud.live_circuit.is_visible_in_tree() and hud.control_scores[9].is_visible_in_tree(),
+			"L’invité doit aussi voir la course et le classement pendant la planification.")
 		guest[2] = -1.0
 		guest[8] = 0
 		hud.guest_input(guest)

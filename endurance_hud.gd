@@ -1,6 +1,7 @@
 extends CanvasLayer
 
 const Race := preload("res://endurance_race.gd")
+const Circuit := preload("res://endurance_circuit.gd")
 const Crew := preload("res://endurance_crew.gd")
 const HudStyle := preload("res://garage_hud_style.gd")
 const CREAM := Color("#fff3d9")
@@ -18,38 +19,6 @@ const BUTTONS := {
 const MODES := ["Ignorer", "Joueur", "Auto · plus lent"]
 const MENU_DIRECTIONS := {"ui_left":Vector2i.LEFT,"ui_right":Vector2i.RIGHT,"ui_up":Vector2i.UP,"ui_down":Vector2i.DOWN}
 
-class Circuit extends Control:
-	const POINTS := [Vector2(0.12,0.69),Vector2(0.23,0.81),Vector2(0.63,0.81),Vector2(0.82,0.64),
-		Vector2(0.88,0.43),Vector2(0.73,0.21),Vector2(0.57,0.23),Vector2(0.47,0.41),
-		Vector2(0.31,0.38),Vector2(0.24,0.17),Vector2(0.12,0.29),Vector2(0.10,0.50)]
-	var race: RefCounted
-	var route := Curve2D.new()
-
-	func _ready() -> void:
-		for p in POINTS: route.add_point(p*Vector2(200,100))
-		route.add_point(POINTS[0]*Vector2(200,100))
-		resized.connect(queue_redraw)
-
-	func _draw() -> void:
-		var scale_to_size := size/Vector2(200,100)
-		var path := PackedVector2Array()
-		for p in POINTS: path.append(p*size)
-		path.append(path[0])
-		draw_polyline(path,Color("#567270"),7,true)
-		draw_polyline(path,Color("#162a2d"),4,true)
-		var entry := PackedVector2Array([Vector2(0.23,0.81)*size,Vector2(0.28,0.91)*size,
-			Vector2(0.58,0.91)*size,Vector2(0.63,0.81)*size])
-		draw_polyline(entry,Color("#9d7851"),2,true)
-		if race==null: return
-		var distance := route.get_baked_length()
-		for i in range(race.cars.size()-1,-1,-1):
-			var car: Dictionary = race.cars[i]
-			if car.state==Race.State.OUT: continue
-			var point := route.sample_baked(fposmod(car.distance,1.0)*distance)*scale_to_size
-			if car.state!=Race.State.TRACK:
-				point = Vector2(0.30+0.034*i,0.91)*size
-			draw_circle(point,5.5 if car.ours else 3.8,Color("#182b2e"),true,-1,true)
-			draw_circle(point,4.0 if car.ours else 2.5,car.color,true,-1,true)
 
 class ActionFeedback extends Control:
 	var amount := 0.0
@@ -85,6 +54,8 @@ var footer_panel: PanelContainer
 var standings_rows: VBoxContainer
 var circuit: Circuit
 var scores: Array[Label] = []
+var live_circuit: Circuit
+var control_scores: Array[Label] = []
 var team_status: RichTextLabel
 var control_panel: PanelContainer
 var control_owner: int:
@@ -211,7 +182,8 @@ func reset_motion() -> void:
 
 func resize_hud(layout: Control) -> void:
 	var half_width := minf(540.0,maxf(260.0,layout.size.x-20.0))/2.0
-	var shift := maxf(0.0,420.0-(layout.size.x/2.0-half_width)) if control_panel!=null and control_panel.visible else 0.0
+	var shift := maxf(0.0,control_panel.get_rect().end.x+12.0-(layout.size.x/2.0-half_width)) \
+		if control_panel!=null and control_panel.visible else 0.0
 	footer_panel.offset_left = -half_width+shift
 	footer_panel.offset_right = minf(half_width+shift,layout.size.x/2.0-10.0)
 
@@ -222,7 +194,7 @@ func toggle_standings() -> void:
 	release_focus()
 
 func desk_panel(layout: Control) -> PanelContainer:
-	var desk := anchored_panel(layout,Vector4(0,1,0,1),Vector4(14,-12,408,-12))
+	var desk := anchored_panel(layout,Vector4(0,1,0,1),Vector4(14,-12,464,-12))
 	desk.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	desk.minimum_size_changed.connect(fit_bottom.bind(desk,12.0))
 	desk.hide()
@@ -237,6 +209,7 @@ func build_control(layout: Control) -> void:
 	var body := column(control_panel)
 	control_heading = text("Contrôle course",22,GOLD)
 	body.add_child(control_heading)
+	build_race_monitor(body)
 	var cars := HBoxContainer.new()
 	cars.add_theme_constant_override("separation",8)
 	body.add_child(cars)
@@ -255,13 +228,45 @@ func build_control(layout: Control) -> void:
 		card_body.add_child(details)
 		service_details.append(details)
 		var status := text("",13,MINT)
+		status.custom_minimum_size.y = 48
 		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		status.max_lines_visible = 2
 		card_body.add_child(status)
 		service_status.append(status)
 	console_actions = column(body)
 	for i in range(3): service_buttons.append(button(console_actions,"",activate.bind(i)))
 	leave_button = button(console_actions,"Quitter le contrôle  ·  B / Q",close_control)
 	build_planner(body)
+
+func build_race_monitor(body: VBoxContainer) -> void:
+	var monitor := HBoxContainer.new()
+	monitor.add_theme_constant_override("separation",12)
+	body.add_child(monitor)
+	var screen := column(monitor)
+	screen.add_child(text("Course en direct",14,MINT))
+	live_circuit = Circuit.new()
+	live_circuit.custom_minimum_size = Vector2(174,96)
+	live_circuit.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	live_circuit.race = race
+	live_circuit.live = true
+	live_circuit.animate = true
+	screen.add_child(live_circuit)
+	var table := column(monitor)
+	table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	table.add_child(text("Classement",14,MINT))
+	var ranks := HBoxContainer.new()
+	ranks.add_theme_constant_override("separation",8)
+	table.add_child(ranks)
+	var rows_per_column := ceili(race.cars.size()/2.0)
+	for start in range(0,race.cars.size(),rows_per_column):
+		var group := column(ranks)
+		group.add_theme_constant_override("separation",0)
+		group.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		for i in range(start,mini(start+rows_per_column,race.cars.size())):
+			var row := text("",12)
+			row.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			group.add_child(row)
+			control_scores.append(row)
 
 func build_planner(body: VBoxContainer) -> void:
 	planner = column(body)
@@ -274,7 +279,7 @@ func build_planner(body: VBoxContainer) -> void:
 		refresh_plan()))
 	planner_rows.append(button(planner,"Confirmer l’arrêt",confirm_plan))
 	planner_rows.append(button(planner,"Retour au contrôle  ·  B / Q",close_plan))
-	planner_feedback = text("",14,MINT)
+	planner_feedback = text("",13,MINT)
 	planner_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	planner.add_child(planner_feedback)
 	planner.hide()
@@ -308,7 +313,7 @@ func open_plan(index: int) -> void:
 	var car: Dictionary = race.cars[index]
 	draft = race.recommended_orders(car)
 	send_to_garage = car.garage_stop or car.state==Race.State.GARAGE or car.damage>=0.38
-	planner_feedback.text = "Haut / bas pour choisir · Gauche / droite pour régler\nA / F pour valider"
+	planner_feedback.text = "Haut/bas pour choisir · Gauche/droite pour régler · A/F pour valider"
 	console_actions.hide()
 	planner.show()
 	refresh()
@@ -338,7 +343,7 @@ func confirm_plan() -> void:
 		close_plan()
 		refresh()
 	else:
-		planner_feedback.text = "La voiture est en intervention. Réessaie quand le travail est terminé."
+		planner_feedback.text = "Intervention en cours. Attends la fin des travaux."
 
 func close_plan() -> void:
 	planner.hide()
@@ -477,13 +482,19 @@ func refresh() -> void:
 			suffix = "+%d t." % floori(gap) if gap>=1.0 else "+%d s" % roundi(gap*standings[0].base_lap)
 		scores[i].text = "%2d   %02d  %s  ·  %s" % [i+1,car.number,car.team,suffix]
 		scores[i].add_theme_color_override("font_color",car.color if car.ours else CREAM)
+		if control_panel.visible:
+			var team_name: String = "Abandon" if car.state==Race.State.OUT else car.team
+			control_scores[i].text = "%2d  %02d %s" % [i+1,car.number,team_name]
+			control_scores[i].add_theme_color_override("font_color",car.color)
 	var team := PackedStringArray()
 	for i in range(2):
 		var car := race.cars[i]
 		team.append("[b][color=#%s]N° %d[/color][/b]  P%d  ·  %s" % [
 			car.color.to_html(false),car.number,standings.find(car)+1,short_status(i)])
 	set_rich_text(team_status,"\n".join(team))
-	if control_panel.visible: refresh_control(standings)
+	if control_panel.visible:
+		live_circuit.queue_redraw()
+		refresh_control(standings)
 	if planner.visible: refresh_plan()
 	refresh_footer(on_grid or finished)
 	briefing.visible = on_grid or finished

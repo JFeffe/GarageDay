@@ -1,6 +1,7 @@
 extends Node3D
 
 const Race := preload("res://endurance_race.gd")
+const Circuit := preload("res://endurance_circuit.gd")
 const Meshes := preload("res://workshop_miniature.gd")
 const Props := preload("res://workshop_neighborhood.gd")
 const GarageCamera := preload("res://garage_camera.gd")
@@ -30,9 +31,11 @@ var obstacles: Array[Rect2] = []
 var jacks: Array[Node3D] = []
 var hose: Array[MeshInstance3D] = []
 var control_lights: Array[StandardMaterial3D] = []
+var control_screen: SubViewport
+var screen_circuit: Circuit
 var zoom := 0
 
-func build() -> void:
+func build(session: Race) -> void:
 	block(Vector3(36.7,0.62,27.95),Vector3(0,-0.357,2.48),Color("#607571"),0.12)
 	block(Vector3(36.5,0.073,24.7),Vector3(0,-0.030,0.9),Color("#9da4a0"))
 	block(Vector3(36.5,0.073,5.2),Vector3(0,-0.017,9.4),Color("#4a575c"))
@@ -48,6 +51,7 @@ func build() -> void:
 		paint(Vector2(marker+0.07,1.57),Vector2(marker+0.70,1.57),0.075,CREAM)
 	build_garage()
 	build_control_desk()
+	build_control_screen(session)
 	build_lane()
 	for i in range(2): add_gt(i)
 	build_service_equipment()
@@ -156,6 +160,38 @@ func build_control_desk() -> void:
 			material.emission = CONTROL_IDLE
 			control_lights.append(material)
 	block(Vector3(0.45,0.037,0.19),Vector3(CONTROL_POINT.x,1.033,z+0.28),INK,0.012)
+
+func build_control_screen(session: Race) -> void:
+	var at := Vector3(CONTROL_POINT.x+0.43,2.43,-1.08)
+	for side in [-1,1]:
+		block(Vector3(0.12,1.11,0.13),Vector3(at.x+side*0.59,1.51,at.z-0.12),INK)
+	var casing := block(Vector3(2.14,1.23,0.14),at,INK)
+	casing.rotation_degrees.x = -27.0
+	control_screen = SubViewport.new()
+	control_screen.size = Vector2i(320,176)
+	control_screen.disable_3d = true
+	control_screen.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(control_screen)
+	screen_circuit = Circuit.new()
+	screen_circuit.race = session
+	screen_circuit.live = true
+	control_screen.add_child(screen_circuit)
+	screen_circuit.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var display := QuadMesh.new()
+	display.size = Vector2(1.98,1.09)
+	var picture := MeshInstance3D.new()
+	picture.position.z = 0.074
+	picture.mesh = display
+	picture.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var video_surface := StandardMaterial3D.new()
+	video_surface.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	video_surface.albedo_texture = control_screen.get_texture()
+	picture.material_override = video_surface
+	casing.add_child(picture)
+
+func refresh_control_screen() -> void:
+	screen_circuit.queue_redraw()
+	control_screen.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 func update_control_lights(race: Race) -> void:
 	for i in range(control_lights.size()):

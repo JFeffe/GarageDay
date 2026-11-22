@@ -169,7 +169,7 @@ func start_endurance() -> void:
 		endurance.setup(randi())
 		endurance_stands = EnduranceStands.new()
 		add_child(endurance_stands)
-		endurance_stands.build()
+		endurance_stands.build(endurance)
 		endurance_crew = EnduranceCrew.new()
 		endurance_stands.add_child(endurance_crew)
 		endurance_crew.build(self,endurance_stands,endurance)
@@ -198,6 +198,7 @@ func resume_endurance() -> void:
 	frame_endurance(1.0)
 	endurance_stands.update_cars(endurance,0.0)
 	endurance_stands.update_control_lights(endurance)
+	endurance_stands.refresh_control_screen()
 	endurance_hud.refresh()
 	game_menu.resume_game()
 
@@ -290,6 +291,7 @@ func tick_endurance(dt: float) -> void:
 	if endurance_refresh>=0.10 or phase!=endurance.phase:
 		endurance_refresh = 0.0
 		endurance_stands.update_control_lights(endurance)
+		endurance_stands.refresh_control_screen()
 		endurance_hud.refresh()
 		if phase!=endurance.phase:
 			endurance_hud.focus_first()

@@ -40,6 +40,8 @@ Rejoins le **poste de contrôle** à l’extérieur, à gauche de la porte du ga
 
 **LT / RT** ou **[ / ]** règle la vitesse en piste sur **×12, ×24 ou ×48**. La course passe automatiquement à **×5** aux stands et pendant la consultation du poste. Le chrono indique le temps écoulé et le temps restant, y compris en pause.
 
+L’écran du poste montre les dix GT en mouvement sur le circuit et leur passage aux stands. Les deux voitures de Garage Day sont entourées en clair. Le direct et le classement complet restent visibles quand tu modifies un plan d’arrêt.
+
 Comme dans le garage de quartier, marche au **stick gauche / WASD / flèches**, vise au **stick droit / IJKL** et maintiens **A / F** sur le repère sélectionné. **LB / RB** ou **− / =** changent le zoom. Prends le pistolet à la pompe, puis branche-le sur la GT. Pour les pneus, lève chaque train avec son cric, change ses deux roues, puis abaisse-le. Récupère une clé près des outils pour réparer. Les deux crics et la pompe sont partagés entre les deux GT.
 
 Dans le navigateur, **Multijoueur → Créer une partie → Course de 12 h** partage la course. Les deux mécanos peuvent utiliser le poste de contrôle pour les deux GT. Pendant que l’un s’occupe de la stratégie, l’autre peut continuer à travailler dans les stands. La course peut être mise en pause et reprise tant que la session reste ouverte. Les sauvegardes d’atelier sont indépendantes.
