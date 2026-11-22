@@ -24,7 +24,6 @@
         <nav class="menu-buttons" aria-label="Menu principal">
           <button class="primary" id="resume" type="button" hidden>Continuer</button>
           <button class="primary" id="new-game" type="button">Nouvelle partie</button>
-          <button id="endurance" type="button">Course de 12 h</button>
           <button id="multiplayer-button" type="button">Multijoueur</button>
           <button id="options-button" type="button">Options</button>
         </nav>
@@ -37,10 +36,10 @@
     </section>
 
     <section class="screen" id="map-screen" aria-labelledby="map-title" hidden>
-      <h2 id="map-title" tabindex="-1">Choisis ton garage</h2>
+      <h2 id="map-title" tabindex="-1">Nouvelle partie</h2>
       <form id="start-form">
         <fieldset class="layouts">
-          <legend class="visually-hidden">Bâtiment</legend>
+          <legend class="visually-hidden">Atelier ou course</legend>
           <label class="layout">
             <input type="radio" name="layout" value="3" checked>
             <img src="images/petit-atelier.webp?rev=__BUILD__" alt="" width="1280" height="768">
@@ -61,6 +60,11 @@
             <img src="images/trois-ponts.webp?rev=__BUILD__" alt="" width="1280" height="768" loading="lazy">
             <span class="layout-label"><strong>Les Trois Ponts</strong><span>3 baies · Bureau central</span></span>
           </label>
+          <label class="layout">
+            <input type="radio" name="layout" value="endurance">
+            <img src="images/endurance.webp?rev=__BUILD__" alt="" width="1280" height="768" loading="lazy">
+            <span class="layout-label"><strong>Course de 12 h</strong><span>Deux GT · Arrêts aux stands</span></span>
+          </label>
         </fieldset>
         <div class="screen-actions"><button class="primary" id="start" type="submit">Jouer</button></div>
       </form>
@@ -71,7 +75,6 @@
       <p>Jouez à deux sur la même caméra. La progression est sauvegardée dans le navigateur de l’hôte.</p>
       <div class="inline-actions">
         <button class="primary" id="host" type="button">Créer une partie</button>
-        <button id="host-endurance" type="button">Héberger les 12 h</button>
         <button id="resume-host" type="button" hidden>Reprendre comme hôte</button>
       </div>
       <form class="join-form" id="join-form">
@@ -127,6 +130,11 @@
     <section class="screen" id="patch-notes" aria-labelledby="notes-title" hidden>
       <h2 id="notes-title" tabindex="-1">Notes de mise à jour</h2>
       <article class="panel release">
+        <h3>0.1.8 <span>Aux stands</span></h3>
+        <ul>
+          <li>Choisis Course de 12 h dans Nouvelle partie.</li>
+          <li>Planifie l’arrêt, puis va au box ou au garage pour utiliser toi-même la pompe, les crics et les outils. L’équipe peut aussi intervenir automatiquement.</li>
+        </ul>
         <h3>0.1.7 <span>Les 12 h de Garage Day</span></h3>
         <ul>
           <li>Deux GT, quatre pilotes et huit voitures rivales sur une course simulée de douze heures.</li>

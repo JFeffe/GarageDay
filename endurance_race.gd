@@ -2,15 +2,17 @@ extends RefCounted
 
 enum Phase { GRID, RACE, FINISH }
 enum State { TRACK, ENTRY, QUEUE, BOX, GARAGE, EXIT, OUT }
+enum Mode { SKIP, MANUAL, AUTO }
 
 const DURATION := 12 * 3600.0
 const ENTRY_TIME := 24.0
 const EXIT_TIME := 20.0
 const BASE_RATE := 24.0
 const PIT_RATE := 5.0
-const GARAGE_RATE := 12.0
 const PACE_NAMES := ["Économie", "Normal", "Attaque"]
-const SERVICES := {"fuel": 35.0, "tires": 30.0, "driver": 26.0, "patch": 52.0}
+const SERVICES := ["fuel", "tires", "driver", "repair"]
+const AUTO_TIME := {"fuel": 60.0, "tires": 150.0, "driver": 43.0, "repair": 78.0}
+const MANUAL_TIME := {"fuel": 19.0, "repair": 25.0}
 const TEAM := "Garage Day"
 const CARS := [
 	[27, TEAM, 125.0, "Maya Roy", "Louis Vega", "#f5a168"],
@@ -34,6 +36,7 @@ var radio: Array[String] = []
 var random := RandomNumberGenerator.new()
 var next_team_incident := 0.0
 var next_rival_incident := 0.0
+var jack_owners: Array[int] = [-1,-1]
 
 func setup(seed_value: int) -> void:
 	random.seed = seed_value
@@ -43,6 +46,7 @@ func setup(seed_value: int) -> void:
 	speed_up = false
 	cars.clear()
 	radio.clear()
+	jack_owners = [-1,-1]
 	for i in CARS.size():
 		var spec: Array = CARS[i]
 		var first_stop := 2780.0 + 440.0 * i if i<2 else random.randf_range(2650.0,3400.0)
@@ -52,7 +56,7 @@ func setup(seed_value: int) -> void:
 			"color": Color(spec[5]), "ours": i<2, "driver": 0, "fatigue": [0.0, 0.0],
 			"distance": -0.0015 * i, "fuel": 1.0, "tires": 1.0, "damage": 0.0, "pace": pace,
 			"state": State.TRACK, "timer": 0.0, "called": false, "planned": first_stop, "exit_from": State.BOX,
-			"job": "", "job_left": 0.0, "job_total": 0.0, "done": {}, "stops": 0,
+			"orders": {}, "jobs": {}, "done": {}, "axles": [-1,-1], "garage_stop": false, "stops": 0,
 			"queue_time": 0.0, "lap_variation": 0.0, "last_lap_time": 0.0,
 		})
 	next_team_incident = random.randf_range(1700.0,2350.0)
@@ -76,13 +80,9 @@ static func time_left(seconds: float) -> String:
 	return "%02d:%02d" % [floori(whole / 60.0), whole % 60]
 
 func rate() -> float:
-	var garage_work := false
 	for car in cars.slice(0,2):
-		if car.state in [State.BOX, State.QUEUE] or (car.state==State.GARAGE and car.job==""):
-			return PIT_RATE
-		if car.state==State.ENTRY or (car.called and seconds_to_line(car)<21.0): return PIT_RATE
-		garage_work = garage_work or car.state==State.GARAGE
-	if garage_work: return GARAGE_RATE
+		if car.state in [State.BOX, State.GARAGE, State.QUEUE, State.ENTRY]: return PIT_RATE
+		if car.state==State.TRACK and car.called and seconds_to_line(car)<21.0: return PIT_RATE
 	return BASE_RATE * (2.0 if speed_up else 1.0)
 
 func advance(seconds: float) -> void:
@@ -111,7 +111,7 @@ func step() -> void:
 		if car.state!=State.OUT:
 			var spare: int = 1-car.driver
 			car.fatigue[spare] = maxf(0.0,car.fatigue[spare]-1.15)
-	assign_box()
+	assign_stands()
 	if elapsed>=next_team_incident:
 		incident(0,2)
 		next_team_incident += random.randf_range(2800.0,4600.0)
@@ -156,7 +156,7 @@ func drive(car: Dictionary) -> void:
 	if not car.ours and (car.fuel<0.14 or car.damage>0.25): car.called = true
 	if not car.called and elapsed>=car.planned:
 		car.called = true
-		if car.ours: announce("N° %d · appel pour l’arrêt prévu." % car.number)
+		if car.ours: announce("N° %d · arrêt prévu, confirme les interventions." % car.number)
 	if car.fuel<=0.0:
 		car.fuel = 0.0
 		car.state = State.OUT
@@ -175,6 +175,7 @@ func drive(car: Dictionary) -> void:
 
 func arrive(car: Dictionary) -> void:
 	car.done.clear()
+	car.axles = [-1,-1]
 	car.called = false
 	car.stops += 1
 	if car.ours:
@@ -184,14 +185,19 @@ func arrive(car: Dictionary) -> void:
 		car.state = State.BOX
 		car.timer = 73.0 + float(car.damage)*385.0 + random.randf_range(-6.0,12.0)
 
-func assign_box() -> void:
-	if cars[0].state==State.BOX or cars[1].state==State.BOX: return
+func assign_stands() -> void:
+	for destination in [State.BOX, State.GARAGE]:
+		assign_place(destination)
+
+func assign_place(destination: int) -> void:
+	if cars[0].state==destination or cars[1].state==destination: return
 	var waiting := {}
 	for car in cars.slice(0,2):
-		if car.state==State.QUEUE and (waiting.is_empty() or car.queue_time<waiting.queue_time): waiting = car
+		if car.state!=State.QUEUE or car.garage_stop!=(destination==State.GARAGE): continue
+		if waiting.is_empty() or car.queue_time<waiting.queue_time: waiting = car
 	if waiting.is_empty(): return
-	waiting.state = State.BOX
-	announce("N° %d · voiture au box, équipe prête." % waiting.number)
+	waiting.state = destination
+	announce("N° %d · %s." % [waiting.number,"au garage" if destination==State.GARAGE else "au box"])
 
 func rival_service(car: Dictionary) -> void:
 	car.timer -= 1.0
@@ -203,26 +209,39 @@ func rival_service(car: Dictionary) -> void:
 	leave(car)
 
 func work_on_car(car: Dictionary) -> void:
-	if car.job=="": return
-	car.job_left -= 1.0
-	if car.job_left>0.0: return
-	match car.job:
+	var index := cars.find(car)
+	for action in car.jobs.keys():
+		var job: Dictionary = car.jobs[action]
+		job.left -= 1.0
+		if job.left<=0.0: finish_service(index,action)
+	for action in SERVICES:
+		if car.orders.get(action)==Mode.AUTO and can_start(index,action):
+			start_service(index,action,Mode.AUTO)
+
+func finish_service(index: int, action: String) -> void:
+	var car := cars[index]
+	match action:
 		"fuel": car.fuel = 1.0
-		"tires": car.tires = 1.0
+		"tires":
+			car.tires = 1.0
+			for axle in range(2):
+				if jack_owners[axle]==index: jack_owners[axle] = -1
 		"driver": car.driver = 1-car.driver
-		"patch": car.damage = maxf(0.0,car.damage-0.29)
-		"repair": car.damage = 0.0
-	car.done[car.job] = true
+		"repair": car.damage = 0.0 if car.state==State.GARAGE else maxf(0.0,car.damage-0.29)
+	car.done[action] = true
+	car.jobs.erase(action)
 	var reports := {"fuel":"plein terminé", "tires":"pneus changés", "driver":"%s prend le volant" % car.drivers[car.driver],
-		"patch":"réparation rapide terminée", "repair":"réparation au garage terminée"}
-	announce("N° %d · %s." % [car.number,reports[car.job]])
-	car.job = ""
-	car.job_left = 0.0
+		"repair":"réparation au garage terminée" if car.state==State.GARAGE else "réparation rapide terminée"}
+	announce("N° %d · %s." % [car.number,reports[action]])
 
 func leave(car: Dictionary) -> void:
 	car.exit_from = car.state
 	car.state = State.EXIT
 	car.timer = EXIT_TIME
+	car.orders.clear()
+	car.done.clear()
+	car.axles = [-1,-1]
+	car.garage_stop = false
 	var stint := random.randf_range(2700.0,3450.0) if not car.ours else 3000.0
 	stint = minf(stint,(float(car.fuel)-0.18)/fuel_burn(car))
 	if car.ours: stint = minf(stint,maxf(900.0,3500.0-float(car.fatigue[car.driver])))
@@ -231,58 +250,135 @@ func leave(car: Dictionary) -> void:
 func reset_plan(car: Dictionary) -> void:
 	car.called = false
 	car.planned = elapsed + seconds_to_line(car) + 6.0
+	car.orders.clear()
+	car.garage_stop = false
 
 func allowed(car: Dictionary, action: String) -> bool:
 	if phase!=Phase.RACE or not car.ours: return false
+	if action=="plan":
+		return car.state in [State.TRACK,State.ENTRY,State.QUEUE,State.BOX,State.GARAGE] and car.jobs.is_empty() and not tires_in_progress(car)
 	if car.state==State.TRACK:
 		match action:
-			"call": return not car.called
 			"delay": return car.fuel>0.09 and (car.called or car.planned-elapsed<seconds_to_line(car)+145.0)
 			"pace": return true
 		return false
-	if car.state not in [State.BOX,State.GARAGE] or car.job!="": return false
+	return action=="exit" and car.state in [State.BOX,State.GARAGE] and car.fuel>=0.055 \
+		and not car.orders.is_empty() and car.jobs.is_empty() and not tires_in_progress(car) and pending_orders(car).is_empty()
+
+func needs_service(car: Dictionary, action: String) -> bool:
+	if car.done.has(action): return false
 	match action:
-		"fuel": return car.fuel<0.998 and not car.done.has(action)
-		"tires": return car.tires<0.998 and not car.done.has(action)
-		"driver": return not car.done.has(action)
-		"patch": return car.state==State.BOX and car.damage>=0.03 and not car.done.has(action)
-		"garage": return car.state==State.BOX and car.damage>=0.08 and not inside_garage()
-		"repair": return car.state==State.GARAGE and car.damage>=0.03
-		"exit": return car.fuel>=0.055
+		"fuel": return car.fuel<0.998
+		"tires": return car.tires<0.998
+		"driver": return true
+		"repair": return car.damage>=0.03
 	return false
 
-func inside_garage() -> bool:
-	return cars[0].state==State.GARAGE or cars[1].state==State.GARAGE
+func pending_orders(car: Dictionary) -> Array[String]:
+	var result: Array[String] = []
+	for action in SERVICES:
+		if car.orders.get(action, Mode.SKIP)!=Mode.SKIP and needs_service(car,action): result.append(action)
+	return result
+
+func recommended_orders(car: Dictionary) -> Dictionary:
+	if not car.orders.is_empty(): return car.orders.duplicate()
+	return {"fuel":Mode.MANUAL if car.fuel<0.67 else Mode.SKIP,
+		"tires":Mode.MANUAL if car.tires<0.84 else Mode.SKIP,
+		"driver":Mode.AUTO if car.fatigue[car.driver]>2100.0 else Mode.SKIP,
+		"repair":Mode.MANUAL if car.damage>=0.03 else Mode.SKIP}
+
+func confirm_stop(index: int, orders: Dictionary, garage: bool) -> bool:
+	if index<0 or index>=2 or not allowed(cars[index],"plan"): return false
+	var car := cars[index]
+	car.orders.clear()
+	for action in SERVICES:
+		var mode: int = orders.get(action,Mode.SKIP)
+		car.orders[action] = mode if mode in [Mode.MANUAL,Mode.AUTO] and not car.done.has(action) else Mode.SKIP
+	car.garage_stop = garage or car.state==State.GARAGE
+	if car.state==State.BOX and garage:
+		if not cars.any(func(peer: Dictionary) -> bool: return peer.ours and peer.state==State.GARAGE):
+			car.state = State.GARAGE
+			announce("N° %d · au garage, le box extérieur est libre." % car.number)
+		else:
+			car.state = State.QUEUE
+			car.queue_time = elapsed
+			announce("N° %d · attend que le garage se libère." % car.number)
+	elif car.state==State.TRACK:
+		car.called = true
+		announce("N° %d · arrêt confirmé à la fin du tour." % car.number)
+	assign_stands()
+	return true
+
+func tires_in_progress(car: Dictionary) -> bool:
+	return not car.done.has("tires") and (car.axles[0]>=0 or car.axles[1]>=0)
+
+func can_start(index: int, action: String) -> bool:
+	var car := cars[index]
+	if phase!=Phase.RACE or car.state not in [State.BOX,State.GARAGE] or car.jobs.has(action) or not needs_service(car,action): return false
+	if action=="tires": return -1==jack_owners[0] and -1==jack_owners[1]
+	if action=="fuel": return not cars[1-index].jobs.has("fuel")
+	return true
+
+func service_time(car: Dictionary, action: String, mode: int) -> float:
+	if action=="repair" and car.state==State.GARAGE:
+		return ceilf((38.0+car.damage*115.0) if mode==Mode.MANUAL else (145.0+car.damage*250.0))
+	return AUTO_TIME[action] if mode==Mode.AUTO else MANUAL_TIME[action]
+
+func start_service(index: int, action: String, mode: int) -> bool:
+	if action not in SERVICES or not can_start(index,action): return false
+	if mode==Mode.MANUAL and not MANUAL_TIME.has(action): return false
+	var car := cars[index]
+	if car.orders.get(action)!=mode: return false
+	if action=="tires":
+		jack_owners = [index,index]
+	var duration := service_time(car,action,mode)
+	car.jobs[action] = {"left":duration,"total":duration,"mode":mode}
+	return true
+
+func manual_needed(index: int, action: String) -> bool:
+	var car := cars[index]
+	return phase==Phase.RACE and car.state in [State.BOX,State.GARAGE] and car.orders.get(action)==Mode.MANUAL \
+		and needs_service(car,action) and not car.jobs.has(action)
+
+func manual_action(index: int, action: String, axle := -1, wheel := -1) -> bool:
+	var car := cars[index]
+	if not manual_needed(index,action): return false
+	if action=="driver":
+		finish_service(index,action)
+		return true
+	if action!="tires": return start_service(index,action,Mode.MANUAL)
+	var stage: int = car.axles[axle]
+	if wheel>=0:
+		if jack_owners[axle]!=index or stage<0 or stage>=4 or (stage & (1<<wheel))!=0: return false
+		car.axles[axle] = stage | (1<<wheel)
+	elif stage==-1 and jack_owners[axle]==-1:
+		jack_owners[axle] = index
+		car.axles[axle] = 0
+	elif stage==3 and jack_owners[axle]==index:
+		jack_owners[axle] = -1
+		car.axles[axle] = 4
+	else: return false
+	if car.axles==[4,4]: finish_service(index,action)
+	return true
 
 func perform(index: int, action: String) -> bool:
 	if index<0 or index>=2 or index>=cars.size(): return false
 	var car := cars[index]
 	if not allowed(car,action): return false
 	match action:
-		"call":
-			car.called = true
-			announce("N° %d · au box à la fin du tour." % car.number)
 		"delay":
 			reset_plan(car)
 			announce("N° %d · l’arrêt est décalé d’un tour." % car.number)
 		"pace": car.pace = (car.pace+1)%PACE_NAMES.size()
-		"garage":
-			car.state = State.GARAGE
-			announce("N° %d · au garage. Le box est libre." % car.number)
 		"exit":
 			leave(car)
 			announce("N° %d · sortie des stands." % car.number)
-		_:
-			car.job = action
-			car.job_total = ceilf(170.0+float(car.damage)*420.0) if action=="repair" else SERVICES[action]
-			car.job_left = car.job_total
-	assign_box()
+	assign_stands()
 	return true
 
 static func action_label(action: String) -> String:
-	return {"fuel":"Essence", "tires":"Pneus", "driver":"Relève", "patch":"Réparation rapide",
-		"repair":"Réparation au garage", "garage":"Rentrer au garage", "exit":"Reprendre la piste",
-		"call":"Appeler au box", "delay":"Décaler d’un tour"}.get(action,action)
+	return {"fuel":"Essence", "tires":"Pneus", "driver":"Relève", "repair":"Réparation",
+		"plan":"Plan d’arrêt", "exit":"Reprendre la piste", "delay":"Décaler d’un tour"}.get(action,action)
 
 func classification() -> Array[Dictionary]:
 	var result := cars.duplicate()

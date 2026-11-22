@@ -92,7 +92,7 @@ button.quiet:hover { color: var(--text); }
 .screen-actions { margin-top: 1.4rem; text-align: right; }
 .screen-actions button { min-width: 9rem; }
 
-.layouts { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: clamp(.75rem, 2vw, 1.4rem); }
+.layouts { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: clamp(.75rem, 2vw, 1.4rem); }
 .layout { position: relative; cursor: pointer; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .layout:hover { border-color: #87a5a0; }
 .layout:has(input:checked) { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber); }

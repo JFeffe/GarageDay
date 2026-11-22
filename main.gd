@@ -8,6 +8,7 @@ const Map := preload("res://workshop_map.gd")
 const EnduranceRace := preload("res://endurance_race.gd")
 const EnduranceStands := preload("res://endurance_stands.gd")
 const EnduranceHud := preload("res://endurance_hud.gd")
+const EnduranceCrew := preload("res://endurance_crew.gd")
 const BINDINGS := {
 	"pause_game": [KEY_ESCAPE, JOY_BUTTON_START],
 	"reset": [KEY_F9, JOY_BUTTON_BACK],
@@ -35,6 +36,7 @@ var endurance_active := false
 var endurance: EnduranceRace
 var endurance_stands: EnduranceStands
 var endurance_hud: EnduranceHud
+var endurance_crew: EnduranceCrew
 var endurance_refresh := 0.0
 var local_storage_enabled := true
 var local_save_path := "user://solo.save"
@@ -168,13 +170,18 @@ func start_endurance() -> void:
 		endurance_stands = EnduranceStands.new()
 		add_child(endurance_stands)
 		endurance_stands.build()
+		endurance_crew = EnduranceCrew.new()
+		endurance_stands.add_child(endurance_crew)
+		endurance_crew.build(self,endurance_stands,endurance)
 		endurance_hud = EnduranceHud.new()
 		add_child(endurance_hud)
-		endurance_hud.build(endurance)
+		endurance_hud.build(endurance,endurance_crew)
 		endurance_hud.restart_requested.connect(start_endurance)
 		endurance_hud.exit_requested.connect(game_menu.return_home)
 	else:
 		endurance.setup(randi())
+		endurance_crew.reset()
+		endurance_hud.close_plan()
 	resume_endurance()
 
 func endurance_in_progress() -> bool:
@@ -263,14 +270,19 @@ func _physics_process(dt: float) -> void:
 
 func tick_endurance(dt: float) -> void:
 	var phase := endurance.phase
-	if hosting: endurance_hud.guest_input(workshop.guest_input)
-	endurance.advance(dt*endurance.rate())
+	var guest: Array = workshop.guest_input if hosting else []
+	var guest_can_work := endurance_hud.guest_input(guest)
+	var clock_rate := EnduranceRace.PIT_RATE if endurance_hud.planner.visible else endurance.rate()
+	endurance.advance(dt*clock_rate)
 	endurance_stands.update_cars(endurance,dt)
+	var field_input := endurance_hud.field_input()
+	var walk: Vector2 = workshop.movement_input() if field_input else Vector2.ZERO
+	endurance_crew.tick(dt,clock_rate,walk,field_input and Input.is_action_pressed("use_item"),guest,guest_can_work)
 	endurance_refresh += dt
 	if endurance_refresh>=0.10 or phase!=endurance.phase:
 		endurance_refresh = 0.0
 		endurance_hud.refresh()
-		if phase!=endurance.phase or get_viewport().gui_get_focus_owner()==null:
+		if phase!=endurance.phase:
 			endurance_hud.focus_first()
 
 func send_room_audio() -> void:

@@ -11,10 +11,19 @@ const GOLD := Color("#f7c674")
 const RED := Color("#c5664a")
 const BOX := Vector3(0,0.055,4.15)
 const GARAGE := Vector3(0,0.055,-5.9)
+const PUMP := Vector2(2.9,0.17)
+const TOOLS := [Vector2(5.05,-3.45),Vector2(6.75,-7.8)]
+const JACK_HOME := [Vector2(-4.25,0.10),Vector2(-3.15,0.10)]
+const WALKABLE := Rect2(-15.8,-10.42,31.6,17.02)
 
 var cars: Array[Node3D] = []
 var animations: Array[AnimationPlayer] = []
 var playing := ["", ""]
+var bodies: Array[Node3D] = []
+var body_height: Array[float] = []
+var obstacles: Array[Rect2] = []
+var jacks: Array[Node3D] = []
+var hose: Array[MeshInstance3D] = []
 
 func build() -> void:
 	block(Vector3(36.7,0.62,27.95),Vector3(0,-0.357,2.48),Color("#607571"),0.12)
@@ -32,6 +41,7 @@ func build() -> void:
 	build_garage()
 	build_lane()
 	for i in range(2): add_gt(i)
+	build_service_equipment()
 
 func block(size: Vector3, at: Vector3, color: Color, bevel := 0.04) -> MeshInstance3D:
 	return Meshes.bevel_box(self,size,at,color,bevel)
@@ -60,6 +70,8 @@ func sign_text(message: String, at: Vector3, height: float, color: Color, on_flo
 	add_child(label)
 
 func wall(size: Vector3, at: Vector3) -> void:
+	var footprint := Vector2(size.x,size.z)
+	obstacles.append(Rect2(Vector2(at.x,at.z)-footprint/2.0,footprint))
 	block(size,at,WALL,0.07)
 	block(Vector3(size.x+0.04,0.11,size.z+0.04),at+Vector3(0,size.y/2,0),CREAM)
 	block(Vector3(size.x+0.015,0.20,size.z+0.015),Vector3(at.x,0.14,at.z),INK)
@@ -96,8 +108,9 @@ func build_garage() -> void:
 	Props.fit(self,Props.FIRE_EXTINGUISHER,Vector3(0.36,0.83,0.33),Vector3(5.52,0.03,-0.73))
 	sign_text("PNEUS",Vector3(-7.45,0.038,-3.89),0.51,INK,true)
 	sign_text("OUTILS",Vector3(7.44,0.038,-6.15),0.51,INK,true)
-	Props.fit(self,Props.STATION_MODELS.waste_oil,Vector3(0.88,1.11,0.88),Vector3(1.85,0.056,0.18))
-	sign_text("RAVITAILLEMENT",Vector3(4.12,0.047,1.04),0.45,INK,true)
+	for footprint in [Rect2(-10.05,-8.0,4.65,1.15),Rect2(-9.7,-5.2,2.95,0.93),
+		Rect2(4.7,-9.5,3.7,1.15),Rect2(8.47,-5.28,1.26,0.88),Rect2(5.78,-3.87,0.85,0.83)]:
+		obstacles.append(footprint)
 	for x in [-5.82,6.0]:
 		Props.fit(self,Props.CONE,Vector3(0.46,0.65,0.46),Vector3(x,0.035,1.96))
 
@@ -133,6 +146,8 @@ func add_gt(index: int) -> void:
 	cars.append(car)
 	var asset := load(GT_MODELS[index]) as PackedScene
 	var scene := Props.fit(car,asset,Vector3(2.16,1.36,4.85))
+	bodies.append(scene)
+	body_height.append(scene.position.y)
 	var matching := scene.find_children("*","AnimationPlayer",true,false)
 	animations.append(matching[0] if not matching.is_empty() else null)
 	var color := Color("#b94b28") if index==0 else Color("#187f91")
@@ -152,9 +167,59 @@ func add_gt(index: int) -> void:
 	car.add_child(badge)
 
 func frame(camera: Camera3D) -> void:
-	camera.rotation_degrees = Vector3(-58,-9,0)
-	camera.position = Vector3(0,0,2.0)+camera.basis*Vector3(0,0,45)
-	camera.size = 29.0
+	camera.rotation_degrees = Vector3(-90,0,0)
+	camera.position = Vector3(0,40,2.2)
+	camera.size = 26.6
+
+func build_service_equipment() -> void:
+	obstacles.append(Rect2(PUMP-Vector2(0.45,0.34),Vector2(0.9,0.68)))
+	block(Vector3(0.85,0.18,0.66),Vector3(PUMP.x,0.13,PUMP.y),INK)
+	block(Vector3(0.69,1.04,0.54),Vector3(PUMP.x,0.69,PUMP.y),RED)
+	block(Vector3(0.62,0.18,0.48),Vector3(PUMP.x,1.23,PUMP.y),CREAM)
+	block(Vector3(0.46,0.06,0.27),Vector3(PUMP.x,1.34,PUMP.y),INK)
+	block(Vector3(0.20,0.055,0.12),Vector3(PUMP.x,1.37,PUMP.y),Color("#9adcc1"))
+	sign_text("POMPE",Vector3(PUMP.x,0.049,PUMP.y+0.77),0.43,INK,true)
+	sign_text("CRICS",Vector3(-3.66,0.049,1.0),0.43,INK,true)
+	for i in range(2):
+		var jack := Node3D.new()
+		add_child(jack)
+		jacks.append(jack)
+		Meshes.bevel_box(jack,Vector3(0.49,0.14,0.83),Vector3(0,0.14,0),GOLD)
+		Meshes.cylinder(jack,0.16,0.22,Vector3(0,0.25,0.19),INK,14)
+		var handle := Meshes.cylinder(jack,0.035,0.97,Vector3(0,0.16,-0.77),INK,12)
+		handle.rotation.x = PI/2.0
+		for x in [-0.23,0.23]:
+			Meshes.cylinder(jack,0.09,0.09,Vector3(x,0.10,-0.28),INK,10).rotation.z = PI/2.0
+	for i in range(3):
+		var line := Meshes.cylinder(self,0.043,1.0,Vector3.ZERO,INK,10)
+		line.hide()
+		hose.append(line)
+
+func parked_center(car: Dictionary) -> Vector2:
+	var center := GARAGE if car.state==Race.State.GARAGE else BOX
+	return Vector2(center.x,center.z)
+
+func local_service_point(car: Dictionary, offset: Vector2) -> Vector2:
+	var origin := parked_center(car)
+	return origin+offset.rotated(PI if car.state==Race.State.GARAGE else -PI/2.0)
+
+func ready_for_work(index: int, car: Dictionary) -> bool:
+	if car.state not in [Race.State.BOX,Race.State.GARAGE]: return false
+	var model := cars[index]
+	return Vector2(model.position.x,model.position.z).distance_to(parked_center(car))<0.37 and \
+		absf(angle_difference(model.rotation.y,PI if car.state==Race.State.GARAGE else PI/2.0))<0.22
+
+func walkable(point: Vector2, race: Race) -> bool:
+	if not WALKABLE.has_point(point): return false
+	for wall_area in obstacles:
+		if wall_area.grow(0.24).has_point(point): return false
+	for i in range(2):
+		var car := race.cars[i]
+		if car.state not in [Race.State.BOX,Race.State.GARAGE,Race.State.QUEUE,Race.State.ENTRY,Race.State.EXIT]: continue
+		var model := cars[i]
+		var offset := (point-Vector2(model.position.x,model.position.z)).rotated(model.rotation.y)
+		if absf(offset.x)<1.29 and absf(offset.y)<2.60: return false
+	return true
 
 func update_cars(race: RefCounted, dt: float) -> void:
 	for i in range(2):
@@ -192,8 +257,36 @@ func update_cars(race: RefCounted, dt: float) -> void:
 		else:
 			model.position = model.position.lerp(point,1.0-exp(-dt*3.9))
 		model.rotation.y = lerp_angle(model.rotation.y,yaw,1.0 if dt==0.0 else 1.0-exp(-dt*6.0))
-		var pose := "bonnet-open" if car.job in ["patch","repair"] else "doors-open" if car.job=="driver" else ""
+		var lift := Vector2(float(race.jack_owners[0]==i),float(race.jack_owners[1]==i))
+		bodies[i].position.y = lerpf(bodies[i].position.y,body_height[i]+0.16*(lift.x+lift.y),1.0 if dt==0.0 else minf(1.0,dt*7.0))
+		bodies[i].rotation.x = lerpf(bodies[i].rotation.x,(lift.y-lift.x)*0.09,1.0 if dt==0.0 else minf(1.0,dt*7.0))
+		var pose := "bonnet-open" if car.jobs.has("repair") else "doors-open" if car.jobs.has("driver") else ""
 		update_pose(i,pose)
+	update_equipment(race)
+
+func update_equipment(race: Race) -> void:
+	for axle in range(2):
+		var owner: int = race.jack_owners[axle]
+		var point: Vector2 = JACK_HOME[axle]
+		var yaw := 0.0
+		if owner>=0:
+			point = local_service_point(race.cars[owner],Vector2(0.0,2.36 if axle==0 else -2.36))
+			yaw = cars[owner].rotation.y+(PI if axle==0 else 0.0)
+		jacks[axle].position = Vector3(point.x,0.04,point.y)
+		jacks[axle].rotation.y = yaw
+	for line in hose: line.hide()
+	for i in range(2):
+		if not race.cars[i].jobs.has("fuel"): continue
+		var socket := local_service_point(race.cars[i],Vector2(-1.05,-1.1))
+		var points := [Vector3(PUMP.x,0.83,PUMP.y),Vector3(PUMP.x-0.45,0.11,PUMP.y+signf(socket.y-PUMP.y)*0.65),
+			Vector3(socket.x-0.33,0.09,socket.y),Vector3(socket.x,0.70,socket.y)]
+		for k in range(hose.size()):
+			var from: Vector3 = points[k]
+			var to: Vector3 = points[k+1]
+			hose[k].position = (from+to)/2.0
+			hose[k].quaternion = Quaternion(Vector3.UP,from.direction_to(to))
+			hose[k].scale.y = from.distance_to(to)+0.05
+			hose[k].show()
 
 func update_pose(index: int, pose: String) -> void:
 	var animation := animations[index]

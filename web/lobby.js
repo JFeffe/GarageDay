@@ -470,23 +470,29 @@ addEventListener("blur", () => { keys.clear(); sendInput(); });
 addEventListener("pagehide", () => peer?.destroy());
 setInterval(sendInput, 33);
 
-const selectedLayout = () => Number(new FormData(elements["start-form"]).get("layout"));
 elements["start-form"].addEventListener("submit", event => {
   event.preventDefault();
+  startSelectedGame(new FormData(elements["start-form"]).get("layout"));
+});
+
+function startSelectedGame(selection) {
+  if (selection === "endurance") {
+    if (pickerMode === "host") hostGame(defaultLayout, "", "endurance");
+    else {
+      if (paused && !confirm(launch.activity === "endurance" ? "Remplacer la course en cours ?" :
+        "Mettre fin à la partie d’atelier ouverte ? Ta sauvegarde d’atelier reste disponible.")) return;
+      openGame("solo", defaultLayout, "", "endurance");
+    }
+    return;
+  }
   if (pickerMode === "solo" && paused && launch.activity === "endurance" &&
       !confirm("Terminer la course en cours pour ouvrir un garage ?")) return;
   if ((loadSave(pickerMode) || (pickerMode === "solo" && paused && launch.activity === "workshop")) &&
       !confirm("Remplacer la sauvegarde de cette partie ?")) return;
-  if (pickerMode === "host") hostGame(selectedLayout());
-  else openGame("solo", selectedLayout());
-});
-elements["new-game"].addEventListener("click", () => openPicker("solo"));
-elements.endurance.addEventListener("click", startEndurance);
-function startEndurance() {
-  if (paused && !confirm(launch.activity === "endurance" ? "Remplacer la course en cours ?" :
-    "Fermer le garage pour lancer la course ? La reprise se fera au dernier atelier libre sauvegardé.")) return;
-  openGame("solo", defaultLayout, "", "endurance");
+  if (pickerMode === "host") hostGame(Number(selection));
+  else openGame("solo", Number(selection));
 }
+elements["new-game"].addEventListener("click", () => openPicker("solo"));
 elements["multiplayer-button"].addEventListener("click", () => showScreen("multiplayer"));
 elements["options-button"].addEventListener("click", () => showScreen("options"));
 elements["notes-button"].addEventListener("click", () => showScreen("patch-notes"));
@@ -496,7 +502,6 @@ elements.back.addEventListener("click", () => {
 });
 elements.resume.addEventListener("click", continueGame);
 elements.host.addEventListener("click", () => openPicker("host"));
-elements["host-endurance"].addEventListener("click", () => hostGame(defaultLayout, "", "endurance"));
 elements["resume-host"].addEventListener("click", () => hostGame(defaultLayout, loadSave("host")));
 elements["join-form"].addEventListener("submit", event => {
   event.preventDefault();

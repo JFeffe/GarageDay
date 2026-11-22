@@ -1,16 +1,20 @@
 extends CanvasLayer
 
 const Race := preload("res://endurance_race.gd")
+const Crew := preload("res://endurance_crew.gd")
 const CREAM := Color("#fff3d9")
 const MINT := Color("#a6ccc3")
 const GOLD := Color("#ffc47e")
 const BLUE := Color("#a8edf5")
-const BRIEFING := "Deux GT et quatre pilotes. Appelle tes voitures au box, fais le plein, change les pneus et alterne les pilotes. Les gros dégâts se réparent au garage.\n\nSouris ou flèches / croix et A / F."
+const BRIEFING := "Prépare les arrêts de tes deux GT. Choisis les interventions à faire toi-même ou à déléguer à l’équipe.\n\nWASD / stick pour marcher · A / F à maintenir pour travailler. Tab / Y pour gérer les arrêts."
 const BUTTONS := {
-	Race.State.TRACK: ["call", "delay", "pace", "", "", ""],
-	Race.State.BOX: ["fuel", "tires", "driver", "patch", "garage", "exit"],
-	Race.State.GARAGE: ["fuel", "tires", "driver", "repair", "", "exit"],
+	Race.State.TRACK: ["plan", "delay", "pace"],
+	Race.State.ENTRY: ["plan", "", ""],
+	Race.State.QUEUE: ["plan", "", ""],
+	Race.State.BOX: ["plan", "", "exit"],
+	Race.State.GARAGE: ["plan", "", "exit"],
 }
+const MODES := ["Ignorer", "Joueur", "Auto · plus lent"]
 
 class Circuit extends Control:
 	const POINTS := [Vector2(0.12,0.69),Vector2(0.23,0.81),Vector2(0.63,0.81),Vector2(0.82,0.64),
@@ -46,6 +50,7 @@ class Circuit extends Control:
 			draw_circle(point,4.0 if car.ours else 2.5,car.color,true,-1,true)
 
 var race: RefCounted
+var crew: Crew
 var start_button: Button
 var speed_button: Button
 var headline: Label
@@ -60,14 +65,26 @@ var briefing_copy: Label
 var restart_button: Button
 var exit_button: Button
 var guest_online := false
-var guest_selection := 0
 var guest_axis := 0
+var planner: PanelContainer
+var planner_title: Label
+var planner_feedback: Label
+var planner_rows: Array[Button] = []
+var planner_index := 0
+var planner_pick := 0
+var planner_for_guest := false
+var draft: Dictionary = {}
+var send_to_garage := false
+var work_hints: Array[Label] = []
+var work_bars: Array[ProgressBar] = []
+var crew_panel: PanelContainer
 
 signal restart_requested
 signal exit_requested
 
-func build(session: RefCounted) -> void:
+func build(session: RefCounted, mechanics: Crew) -> void:
 	race = session
+	crew = mechanics
 	layer = 4
 	var layout := Control.new()
 	layout.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -89,7 +106,8 @@ func build(session: RefCounted) -> void:
 	left_content.add_child(circuit)
 	speed_button = button(left_content,"",func() -> void:
 		race.speed_up = not race.speed_up
-		refresh())
+		refresh()
+		release_focus())
 
 	var right := anchored_panel(layout,Vector4(1,0,1,0),Vector4(-240,14,-15,0))
 	var right_content := column(right)
@@ -114,6 +132,24 @@ func build(session: RefCounted) -> void:
 	row.add_theme_constant_override("separation",10)
 	bottom.add_child(row)
 	for i in range(2): build_card(row,i)
+	crew_panel = panel(bottom)
+	var crew_row := HBoxContainer.new()
+	crew_row.add_theme_constant_override("separation",15)
+	crew_panel.add_child(crew_row)
+	for i in range(2):
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_theme_constant_override("separation",3)
+		crew_row.add_child(info)
+		var hint := text("",14,GOLD if i==0 else BLUE)
+		hint.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		info.add_child(hint)
+		work_hints.append(hint)
+		var fill := ProgressBar.new()
+		fill.show_percentage = false
+		fill.custom_minimum_size.y = 3
+		info.add_child(fill)
+		work_bars.append(fill)
 
 	briefing = anchored_panel(layout,Vector4(0.5,0.5,0.5,0.5),Vector4(-234,-154,234,0))
 	var brief := column(briefing)
@@ -129,7 +165,64 @@ func build(session: RefCounted) -> void:
 		focus_first())
 	restart_button = button(brief,"Nouvelle course",func() -> void: restart_requested.emit())
 	exit_button = button(brief,"Retour à l’accueil",func() -> void: exit_requested.emit())
+	build_planner(layout)
 	refresh()
+
+func build_planner(layout: Control) -> void:
+	planner = anchored_panel(layout,Vector4(0.5,0.5,0.5,0.5),Vector4(-232,-210,232,0))
+	var body := column(planner)
+	planner_title = text("",24,GOLD)
+	body.add_child(planner_title)
+	for action in Race.SERVICES:
+		planner_rows.append(button(body,"",cycle_mode.bind(action)))
+	planner_rows.append(button(body,"",func() -> void:
+		send_to_garage = not send_to_garage
+		refresh_plan()))
+	planner_rows.append(button(body,"Confirmer l’arrêt",confirm_plan))
+	planner_rows.append(button(body,"Annuler",close_plan))
+	planner_feedback = text("",14,MINT)
+	planner_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(planner_feedback)
+	planner.hide()
+
+func open_plan(index: int, from_guest := false) -> void:
+	if planner.visible or not race.allowed(race.cars[index],"plan"): return
+	planner_index = index
+	planner_for_guest = from_guest
+	planner_pick = 0
+	var car: Dictionary = race.cars[index]
+	draft = race.recommended_orders(car)
+	send_to_garage = car.garage_stop or car.state==Race.State.GARAGE or car.damage>=0.38
+	planner_feedback.text = "J2 · stick / flèches et A / F" if from_guest else "Choisis les interventions et la destination."
+	planner.show()
+	refresh_plan()
+	planner_rows[0].grab_focus()
+
+func cycle_mode(action: String) -> void:
+	draft[action] = (int(draft.get(action,Race.Mode.SKIP))+1)%MODES.size()
+	refresh_plan()
+
+func refresh_plan() -> void:
+	var car: Dictionary = race.cars[planner_index]
+	planner_title.text = "Plan d’arrêt · n° %d" % car.number
+	for i in range(Race.SERVICES.size()):
+		var action: String = Race.SERVICES[i]
+		planner_rows[i].disabled = car.done.has(action)
+		planner_rows[i].text = "%s · %s" % [Race.action_label(action),"Terminé" if car.done.has(action) else MODES[draft.get(action,Race.Mode.SKIP)]]
+	planner_rows[4].disabled = car.state==Race.State.GARAGE
+	planner_rows[4].text = "Destination · Garage" if send_to_garage else "Destination · Box extérieur"
+
+func confirm_plan() -> void:
+	if race.confirm_stop(planner_index,draft,send_to_garage):
+		close_plan()
+		refresh()
+	else:
+		planner_feedback.text = "La voiture est en intervention. Réessaie quand le travail est terminé."
+
+func close_plan() -> void:
+	planner.hide()
+	planner_for_guest = false
+	release_focus()
 
 func make_theme() -> Theme:
 	var theme := Theme.new()
@@ -219,42 +312,42 @@ func build_card(parent: HBoxContainer,index: int) -> void:
 	var metrics := text("",15)
 	var relief := text("",14,MINT)
 	var prompt := text("",15,MINT)
-	var bar := ProgressBar.new()
-	bar.show_percentage = false
-	bar.custom_minimum_size.y = 4
 	for label in [title,metrics,relief,prompt]:
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		body.add_child(label)
-	body.add_child(bar)
 	var actions := GridContainer.new()
 	actions.columns = 3
-	actions.custom_minimum_size.y = 65
+	actions.custom_minimum_size.y = 30
 	actions.add_theme_constant_override("h_separation",5)
 	actions.add_theme_constant_override("v_separation",5)
 	body.add_child(actions)
 	var options: Array[Button] = []
-	for i in range(6):
+	for i in range(3):
 		var control := button(actions,"",activate.bind(index,i))
 		control.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		options.append(control)
-	cards.append({"title":title,"metrics":metrics,"relief":relief,"prompt":prompt,"bar":bar,"buttons":options})
+	cards.append({"title":title,"metrics":metrics,"relief":relief,"prompt":prompt,"buttons":options})
 
 func options_for(car: Dictionary) -> Array:
-	return BUTTONS.get(car.state,["", "", "", "", "", ""])
+	return BUTTONS.get(car.state,["", "", ""])
 
 func activate(index: int, slot: int) -> void:
+	if planner.visible: return
 	var action: String = options_for(race.cars[index])[slot]
+	if action=="plan":
+		open_plan(index)
+		return
 	if action!="" and race.perform(index,action):
 		refresh()
-		var focus := get_viewport().gui_get_focus_owner()
-		if focus is Button and focus.disabled: focus_car(index)
+		release_focus()
 
 func refresh() -> void:
 	var on_grid: bool = race.phase==Race.Phase.GRID
 	var finished: bool = race.phase==Race.Phase.FINISH
 	headline.text = race.clock()
 	var left: float = Race.DURATION-race.elapsed
-	status.text = "%d h %02d restantes · ×%d" % [floori(left/3600.0),floori(left/60.0)%60,roundi(race.rate())]
+	var rate: float = Race.PIT_RATE if planner.visible else race.rate()
+	status.text = "%d h %02d restantes · ×%d" % [floori(left/3600.0),floori(left/60.0)%60,roundi(rate)]
 	speed_button.disabled = on_grid or finished
 	speed_button.text = "En piste ×48" if race.speed_up else "En piste ×24"
 	speed_button.tooltip_text = "Accélérer ou ralentir le temps en piste. Les arrêts ralentissent l’horloge."
@@ -270,8 +363,7 @@ func refresh() -> void:
 		scores[i].text = "%2d   %02d  %s  ·  %s" % [i+1,car.number,car.team,suffix]
 		scores[i].add_theme_color_override("font_color",car.color if car.ours else CREAM)
 	for i in range(2): refresh_card(i,standings.find(race.cars[i])+1)
-	var controls := "Flèches / croix · A / F choisir"
-	if guest_online: controls = "J2 · n° 81 avec stick / flèches et A / F"
+	var controls := "WASD / stick · A / F intervenir · Tab / Y gérer les arrêts"
 	radio.text = race.radio[0] if not race.radio.is_empty() else controls
 	radio.tooltip_text = "\n".join(race.radio)
 	briefing.visible = on_grid or finished
@@ -280,6 +372,13 @@ func refresh() -> void:
 	exit_button.visible = finished
 	briefing_title.text = "Drapeau à damier" if finished else "Les 12 h de Garage Day"
 	if on_grid: briefing_copy.text = BRIEFING
+	for i in range(2):
+		var show_work := not (on_grid or finished) and (i==0 or guest_online)
+		work_hints[i].get_parent().visible = show_work
+		work_hints[i].text = crew.instruction(i) if show_work else ""
+		work_bars[i].value = crew.progress(i) if show_work else 0.0
+	crew_panel.visible = not (on_grid or finished)
+	if finished and planner.visible: close_plan()
 	if finished:
 		var results := PackedStringArray()
 		for car in race.cars.slice(0,2):
@@ -292,47 +391,43 @@ func refresh_card(index: int, position: int) -> void:
 	var card := cards[index]
 	var driver: String = car.drivers[car.driver]
 	var alternate: String = car.drivers[1-car.driver]
-	var guest := " · J2" if index==1 and guest_online else ""
-	card.title.text = "N° %d · P%d · %s%s" % [car.number,position,driver,guest]
+	card.title.text = "N° %d · P%d · %s" % [car.number,position,driver]
 	card.metrics.text = "Essence %d %%    Pneus %d %%    Dégâts %d %%" % [
 		roundi(car.fuel*100),roundi(car.tires*100),roundi(car.damage*100)]
 	card.relief.text = "Relève · %s     Fatigue · %d %%" % [alternate,clampi(roundi(car.fatigue[car.driver]/36.0),0,100)]
 	card.prompt.text = describe(car)
-	var in_progress: bool = car.job!=""
-	card.bar.value = 100.0*(1.0-car.job_left/car.job_total) if in_progress else 0.0
 	var actions := options_for(car)
-	for i in range(6):
+	for i in range(3):
 		var action: String = actions[i]
 		var control: Button = card.buttons[i]
 		control.visible = action!="" and race.phase==Race.Phase.RACE
 		control.disabled = not race.allowed(car,action)
 		var title := Race.action_label(action)
 		if action=="pace": title = "Rythme · "+Race.PACE_NAMES[car.pace]
-		if action=="call" and car.called: title = "Appel confirmé"
-		if car.done.has(action): title += " ✓"
-		var selected := index==1 and guest_online and i==guest_selection and not control.disabled
-		control.text = "› "+title if selected else title
-		control.add_theme_color_override("font_color",BLUE if selected else CREAM)
+		if action=="plan" and car.called: title = "Modifier l’arrêt" if not car.orders.is_empty() else "Confirmer l’arrêt"
+		control.text = title
 
 func describe(car: Dictionary) -> String:
 	if race.phase==Race.Phase.GRID: return "Sur la grille · deux pilotes par voiture"
 	if race.phase==Race.Phase.FINISH: return "Classement final · %d tours" % maxi(0,floori(car.distance))
-	if car.job!="": return "%s · %s" % [Race.action_label(car.job),Race.time_left(car.job_left)]
+	if not car.jobs.is_empty():
+		var working := PackedStringArray()
+		for action in car.jobs:
+			working.append("%s %s" % [Race.action_label(action),Race.time_left(car.jobs[action].left)])
+		return " · ".join(working)
 	match car.state:
 		Race.State.TRACK:
-			if car.called: return "Appel au box · entrée à la fin du tour"
+			if car.called: return "Entrée à la fin du tour · "+("plan à confirmer" if car.orders.is_empty() else "garage" if car.garage_stop else "box")
 			var alert := "Accrochage · " if car.damage>=0.15 else "Réserve d’essence · " if car.fuel<0.16 else "En piste · "
 			return alert+"arrêt prévu dans %s" % Race.time_left(car.planned-race.elapsed)
 		Race.State.ENTRY: return "Entrée des stands · "+Race.time_left(car.timer)
-		Race.State.QUEUE: return "En attente · le box extérieur est occupé"
+		Race.State.QUEUE: return "En attente · "+("garage occupé" if car.garage_stop else "box occupé")
 		Race.State.BOX, Race.State.GARAGE:
-			var needs := PackedStringArray()
-			if car.fuel<0.44: needs.append("essence")
-			if car.tires<0.74: needs.append("pneus")
-			if car.fatigue[car.driver]>2200.0 and not car.done.has("driver"): needs.append("relève")
-			if car.damage>=0.38: needs.append("réparation au garage")
-			elif car.damage>=0.07: needs.append("réparation")
 			var location := "Au garage" if car.state==Race.State.GARAGE else "Au box"
+			if car.orders.is_empty(): return location+" · confirme le plan d’arrêt"
+			var needs := PackedStringArray()
+			for action in race.pending_orders(car):
+				needs.append(Race.action_label(action)+( " (joueur)" if car.orders[action]==Race.Mode.MANUAL else " (auto)"))
 			return location+" · "+(", ".join(needs) if not needs.is_empty() else "prête à repartir")
 		Race.State.EXIT: return "Sortie des stands · "+Race.time_left(car.timer)
 		Race.State.OUT: return "Abandon · panne d’essence"
@@ -342,14 +437,37 @@ func focus_first() -> void:
 	if not visible: return
 	if start_button.is_visible_in_tree(): start_button.grab_focus()
 	elif restart_button.is_visible_in_tree(): restart_button.grab_focus()
-	else: focus_car(0)
+	elif planner.visible: planner_rows[5].grab_focus()
+	else: release_focus()
 
-func focus_car(index: int) -> void:
-	for control: Button in cards[index].buttons:
-		if control.is_visible_in_tree() and not control.disabled:
-			control.grab_focus()
-			return
+func focus_dashboard() -> void:
+	for card in cards:
+		for control: Button in card.buttons:
+			if control.is_visible_in_tree() and not control.disabled:
+				control.grab_focus()
+				return
 	if not speed_button.disabled: speed_button.grab_focus()
+
+func release_focus() -> void:
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused!=null and is_ancestor_of(focused): focused.release_focus()
+
+func field_input() -> bool:
+	var focused := get_viewport().gui_get_focus_owner()
+	return visible and race.phase==Race.Phase.RACE and not planner.visible and (focused==null or not is_ancestor_of(focused))
+
+func _input(event: InputEvent) -> void:
+	if not visible or race==null or race.phase!=Race.Phase.RACE or event.is_echo(): return
+	var toggle: bool = (event is InputEventKey and event.pressed and event.keycode==KEY_TAB) or \
+		(event is InputEventJoypadButton and event.is_action_pressed("take"))
+	if toggle:
+		get_viewport().set_input_as_handled()
+		if planner.visible: close_plan()
+		elif field_input(): focus_dashboard()
+		else: release_focus()
+	elif planner.visible and (event.is_action_pressed("cancel_item") or event.is_action_pressed("ui_cancel")):
+		get_viewport().set_input_as_handled()
+		close_plan()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not visible or not event is InputEventKey or not event.is_action_pressed("use_item") or event.is_echo(): return
@@ -358,23 +476,31 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		focus.pressed.emit()
 
-func guest_input(input: Array) -> void:
+func guest_input(input: Array) -> bool:
 	guest_online = input.size()==9 and input[0]==true
 	if not guest_online or race.phase!=Race.Phase.RACE:
 		guest_axis = 0
-		return
+		if planner_for_guest: close_plan()
+		return false
+	var pressed := int(input[8])
+	if (pressed & 2)!=0:
+		if planner_for_guest: close_plan()
+		elif not planner.visible: open_plan(1,true)
+	if not planner_for_guest: return not planner.visible
+	if (pressed & 8)!=0:
+		close_plan()
+		return false
 	var y := float(input[2])
 	var x := float(input[1])
 	var axis := y if absf(y)>absf(x) else x
 	var direction := int(signf(axis)) if absf(axis)>0.55 else 0
-	var car: Dictionary = race.cars[1]
-	var options := options_for(car)
-	var available: Array[int] = []
-	for i in options.size():
-		if options[i]!="" and race.allowed(car,options[i]): available.append(i)
-	if not available.is_empty():
-		if guest_selection not in available: guest_selection = available[0]
-		elif direction!=0 and guest_axis==0:
-			guest_selection = available[posmod(available.find(guest_selection)+direction,available.size())]
-		if int(input[8]) & 4: activate(1,guest_selection)
+	if direction!=0 and guest_axis==0:
+		for offset in range(1,planner_rows.size()+1):
+			var next := posmod(planner_pick+direction*offset,planner_rows.size())
+			if planner_rows[next].disabled: continue
+			planner_pick = next
+			planner_rows[next].grab_focus()
+			break
+	if (pressed & 4)!=0 and not planner_rows[planner_pick].disabled: planner_rows[planner_pick].pressed.emit()
 	guest_axis = direction
+	return false

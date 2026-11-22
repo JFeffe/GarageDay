@@ -12,6 +12,7 @@ const GARAGE_IMAGES := [preload("res://web/images/traversee.webp"),
 	preload("res://web/images/tandem.webp"),preload("res://web/images/trois-ponts.webp"),
 	preload("res://web/images/petit-atelier.webp")]
 const HERO := preload("res://web/images/atelier.webp")
+const ENDURANCE := preload("res://web/images/endurance.webp")
 
 var game: Node3D
 var screen := ""
@@ -167,7 +168,6 @@ func show_home() -> void:
 		button(actions,"Continuer",game.continue_local_game)
 	button(actions,"Nouvelle partie",request_new_game)
 	if game.endurance_in_progress(): button(actions,"Reprendre les 12 h",game.resume_endurance)
-	else: button(actions,"Course de 12 h",game.start_endurance)
 	button(actions,"Multijoueur",show_multiplayer)
 	button(actions,"Options",func() -> void: show_options("home"))
 	button(actions,"Notes de mise à jour",show_notes)
@@ -217,30 +217,45 @@ func go_back() -> void:
 			if options_origin=="pause": show_pause()
 			else: show_home()
 		"leave_host": show_pause()
+		"new_confirm": show_layouts()
 		"home": pass
 		_: show_home()
 
 func request_new_game() -> void:
+	show_layouts()
+
+func select_workshop(index: int) -> void:
 	if game.session_active or not game.saved_game().is_empty():
-		page("new_confirm","Nouvelle partie ?","La progression actuelle sera remplacée après le choix du garage.")
-		button(content,"Annuler",show_home)
-		button(content,"Choisir un garage",show_layouts)
-	else: show_layouts()
+		page("new_confirm","Nouveau garage ?","La progression de ton garage actuel sera remplacée.")
+		button(content,"Annuler",show_layouts)
+		button(content,"Commencer",game.start_local_game.bind(index))
+	else: game.start_local_game(index)
+
+func select_endurance() -> void:
+	if game.endurance_in_progress():
+		page("new_confirm","Nouvelle course ?","La course en cours sera remplacée.")
+		button(content,"Annuler",show_layouts)
+		button(content,"Commencer",game.start_endurance)
+	else: game.start_endurance()
 
 func show_layouts() -> void:
-	page("layouts","Choisis ton garage","Une partie de dix jours.")
+	page("layouts","Nouvelle partie","Dix jours en atelier ou douze heures en course.")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",18)
 	content.add_child(row)
 	for index in game.workshop.Map.LAYOUT_ORDER:
-		var card := VBoxContainer.new()
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.size_flags_stretch_ratio = 1
-		row.add_child(card)
-		card.add_child(picture(GARAGE_IMAGES[index],120,210))
-		button(card,game.workshop.Map.LAYOUTS[index][0],game.start_local_game.bind(index))
-		card.add_child(label(game.workshop.Map.LAYOUTS[index][1],16,MINT))
+		var layout: Array = game.workshop.Map.LAYOUTS[index]
+		add_game_card(row,GARAGE_IMAGES[index],layout[0],layout[1],select_workshop.bind(index))
+	add_game_card(row,ENDURANCE,"Course de 12 h","Deux GT · Arrêts aux stands",select_endurance)
 	button(content,"Retour",show_home)
+
+func add_game_card(row: HBoxContainer,art: Texture2D,title: String,description: String,action: Callable) -> void:
+	var card := VBoxContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(card)
+	card.add_child(picture(art,120,180))
+	button(card,title,action)
+	card.add_child(label(description,16,MINT))
 
 func show_options(origin: String) -> void:
 	options_origin = origin
@@ -278,8 +293,8 @@ func show_multiplayer() -> void:
 	button(content,"Retour",show_home)
 
 func show_notes() -> void:
-	page("notes","Notes de mise à jour","0.1.7 · Les 12 h de Garage Day")
-	content.add_child(label("Deux GT, une équipe de quatre pilotes et huit voitures rivales. Gère les arrêts et les réparations pendant une course de 12 heures simulées.",20,MINT))
+	page("notes","Notes de mise à jour","0.1.8 · Aux stands")
+	content.add_child(label("Les 12 h sont accessibles par Nouvelle partie. Prépare chaque arrêt puis déplace ton mécano pour intervenir avec les crics, la pompe et les outils.",20,MINT))
 	button(content,"Retour",show_home)
 
 func show_message(message: String) -> void:
