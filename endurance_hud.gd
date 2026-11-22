@@ -55,7 +55,9 @@ var standings_rows: VBoxContainer
 var circuit: Circuit
 var scores: Array[Label] = []
 var live_circuit: Circuit
+var control_table: VBoxContainer
 var control_scores: Array[Label] = []
+var control_ranking: Array[Dictionary] = []
 var team_status: RichTextLabel
 var control_panel: PanelContainer
 var control_owner: int:
@@ -251,12 +253,12 @@ func build_race_monitor(body: VBoxContainer) -> void:
 	live_circuit.live = true
 	live_circuit.animate = true
 	screen.add_child(live_circuit)
-	var table := column(monitor)
-	table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	table.add_child(text("Classement",14,MINT))
+	control_table = column(monitor)
+	control_table.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	control_table.add_child(text("Classement",14,MINT))
 	var ranks := HBoxContainer.new()
 	ranks.add_theme_constant_override("separation",8)
-	table.add_child(ranks)
+	control_table.add_child(ranks)
 	var rows_per_column := ceili(race.cars.size()/2.0)
 	for start in range(0,race.cars.size(),rows_per_column):
 		var group := column(ranks)
@@ -439,6 +441,21 @@ func options_for(car: Dictionary) -> Array:
 func clock_line() -> String:
 	return "%s  ·  Reste %s" % [Race.race_time(race.elapsed),Race.race_time(Race.DURATION-race.elapsed)]
 
+func guest_standings() -> Array:
+	if not control_table.is_visible_in_tree(): return []
+	var view := get_viewport().get_visible_rect().size
+	var table := control_table.get_global_rect()
+	if view.x<=0.0 or view.y<=0.0 or table.size.x<=0.0 or table.size.y<=0.0: return []
+	var bounds := [
+		roundi(10000.0*table.position.x/view.x),roundi(10000.0*table.position.y/view.y),
+		roundi(10000.0*table.size.x/view.x),roundi(10000.0*table.size.y/view.y),
+	]
+	var rows: Array = []
+	for car in control_ranking:
+		var team_name: String = "Abandon" if car.state==Race.State.OUT else car.team
+		rows.append([car.number,team_name,"#"+car.color.to_html(false)])
+	return [view.aspect(),bounds,rows]
+
 func change_speed(step: int) -> void:
 	race.change_speed(step)
 	refresh()
@@ -473,6 +490,7 @@ func refresh() -> void:
 	speed_target.text = "LT  ·  ×%d  ·  RT" % roundi(Race.TRACK_RATES[race.speed_step])
 	circuit.queue_redraw()
 	var standings: Array[Dictionary] = race.classification()
+	if control_panel.visible: control_ranking = standings
 	for i in standings.size():
 		var car := standings[i]
 		var suffix := "%d t." % maxi(0,floori(car.distance))

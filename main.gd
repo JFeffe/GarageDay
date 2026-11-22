@@ -204,6 +204,7 @@ func resume_endurance() -> void:
 
 func hide_endurance() -> void:
 	if not endurance_active: return
+	if hosting and web_room!=null: web_room.reportStandings("")
 	endurance_active = false
 	endurance_hud.hide()
 	endurance_stands.hide()
@@ -215,6 +216,7 @@ func hide_endurance() -> void:
 func show_activity_hud(value: bool) -> void:
 	workshop.ui.visible = value and not endurance_active
 	if endurance_hud!=null: endurance_hud.visible = value and endurance_active
+	if not value and endurance_active and hosting and web_room!=null: web_room.reportStandings("")
 
 func control_web_game(args: Array) -> void:
 	match args[0]:
@@ -293,6 +295,9 @@ func tick_endurance(dt: float) -> void:
 		endurance_stands.update_control_lights(endurance)
 		endurance_stands.refresh_control_screen()
 		endurance_hud.refresh()
+		if hosting and endurance_hud.guest_online:
+			var standings := endurance_hud.guest_standings()
+			web_room.reportStandings("" if standings.is_empty() else JSON.stringify(standings))
 		if phase!=endurance.phase:
 			endurance_hud.focus_first()
 

@@ -231,6 +231,10 @@ func check_local_menu() -> void:
 		check(hud.live_circuit.is_visible_in_tree() and hud.control_scores[0].is_visible_in_tree()
 			and hud.control_scores[0].text.contains("96"),"Le classement doit rester visible et s’actualiser dans le plan.")
 		await frames()
+		var guest_board: Array = hud.guest_standings()
+		check(guest_board.size()==3 and guest_board[2].size()==10 and guest_board[2][0][0]==96
+			and guest_board[1][2]>0 and guest_board[1][3]>0,
+			"Le navigateur invité doit recevoir les dix rangs et la zone du tableau pendant le plan.")
 		check(hud.control_panel.position.y>hud.clock_panel.get_rect().end.y,
 			"Le panneau de stratégie doit laisser le chrono dégagé.")
 		check(hud.service_status[0].size.y>=48.0 and not hud.service_status[0].text.is_empty(),
@@ -244,6 +248,7 @@ func check_local_menu() -> void:
 			"Annuler un plan doit restaurer le contrôle sans appeler la GT.")
 		await press_pad(JOY_BUTTON_B)
 		check(hud.field_input() and hud.left_panel.visible,"Quitter le poste doit restituer les commandes de terrain.")
+		check(hud.guest_standings().is_empty(),"La fermeture du poste doit masquer le classement invité.")
 		check(game.camera.rotation_degrees.is_equal_approx(GarageCamera.ROTATION),
 			"L’endurance doit reprendre la perspective du garage de quartier.")
 		check(not hud.standings_rows.visible,"Le classement doit pouvoir se replier pour dégager la vue.")

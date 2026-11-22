@@ -131,6 +131,10 @@
     <section class="screen" id="patch-notes" aria-labelledby="notes-title" hidden>
       <h2 id="notes-title" tabindex="-1">Notes de mise à jour</h2>
       <article class="panel release">
+        <h3>0.1.13 <span>Classement de l’invité</span></h3>
+        <ul>
+          <li>Le navigateur de l’invité affiche le classement en texte net pendant la préparation des arrêts.</li>
+        </ul>
         <h3>0.1.12 <span>La course en direct</span></h3>
         <ul>
           <li>Un écran au poste de contrôle suit les dix GT sur le circuit.</li>
@@ -207,6 +211,10 @@
   <section class="game" id="game" hidden aria-label="Garage Day en cours">
     <iframe id="game-frame" title="Garage Day" allow="autoplay; gamepad; fullscreen" hidden></iframe>
     <video id="guest-view" autoplay muted playsinline tabindex="0" aria-label="Écran partagé de l’hôte" hidden></video>
+    <section id="guest-standings" aria-labelledby="guest-standings-title" hidden>
+      <h2 id="guest-standings-title">Classement</h2>
+      <ol id="guest-standings-rows"></ol>
+    </section>
     <div class="room" id="room" hidden>
       <span id="room-status" role="status"></span>
       <span id="fps" class="fps" hidden></span>

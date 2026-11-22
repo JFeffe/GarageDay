@@ -5,16 +5,19 @@ const vm = require("node:vm");
 // Exercise the actual browser bridge with a minimal DOM, without WebRTC or a browser.
 function lobby(hash = "") {
   const html = fs.readFileSync(`${__dirname}/web/index.html`, "utf8");
-  const elements = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, {
-    id, hidden: false, value: "", checked: false, textContent: "",
+  const node = id => ({
+    id, hidden: false, value: "", checked: false, textContent: "", children: [], style: {},
     addEventListener() {}, focus() {}, querySelector() { return { focus() {} }; },
     removeAttribute(name) { delete this[name]; },
-  }]));
+    replaceChildren(...children) { this.children = children; },
+    append(...children) { this.children.push(...children); },
+  });
+  const elements = Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(([, id]) => [id, node(id)]));
   const saved = new Map();
   const tasks = [];
   const history = [];
   const context = vm.createContext({
-    document: { querySelectorAll: () => Object.values(elements), body: { dataset: { game: "game.html" } } },
+    document: { querySelectorAll: () => Object.values(elements), createElement: node, body: { dataset: { game: "game.html" } } },
     window: {}, location: { hash, pathname: "/", search: "" }, URLSearchParams, URL, performance,
     history: { replaceState(_state, _title, url) { history.push(url); } },
     localStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) },
@@ -98,6 +101,53 @@ vm.runInContext('openGame("guest"); returnHome("Connexion interrompue.");', disc
 assert.equal(disconnected.elements.invited.hidden, false, "An unexpected disconnect should still let the guest retry");
 assert.equal(lobby().elements.home.hidden, false);
 assert.equal(lobby(inviteHash).elements.invited.hidden, false);
+
+const standings = [1.6, [1700, 1500, 1880, 1500],
+  Array.from({ length: 10 }, (_, i) => [27 + i, "Garage Day", "#f5a168"])];
+const standingsHost = lobby();
+standingsHost.context.packets = [];
+vm.runInContext(`openGame("host", 3, "", "endurance");
+  channel = { open: true, metadata: {}, dataChannel: { bufferedAmount: 0 },
+    send(payload) { packets.push(JSON.stringify(payload)); } };`, standingsHost.context);
+standingsHost.bridge.reportStandings(JSON.stringify(standings));
+vm.runInContext("flushStandings()", standingsHost.context);
+assert.equal(standingsHost.context.packets.length, 0, "Older guests should use the captured board");
+vm.runInContext("channel.metadata.standingsOverlay = true; channel.dataChannel.bufferedAmount = 1; flushStandings();",
+  standingsHost.context);
+assert.equal(standingsHost.context.packets.length, 0, "Standings should not add to a busy channel");
+standingsHost.bridge.reportStandings(JSON.stringify([1.6, [1700, 2000, 1880, 1500], standings[2]]));
+vm.runInContext("channel.dataChannel.bufferedAmount = 0; flushStandings(); flushStandings();", standingsHost.context);
+assert.equal(standingsHost.context.packets.length, 1, "Only the latest changed snapshot should be sent");
+assert.equal(JSON.parse(standingsHost.context.packets[0])[1][1][1], 2000);
+standingsHost.bridge.reportStandings("");
+vm.runInContext("flushStandings(); flushStandings();", standingsHost.context);
+assert.deepEqual(JSON.parse(standingsHost.context.packets[1]), ["standings", null]);
+assert.equal(standingsHost.context.packets.length, 2, "Closing the console should clear the overlay once");
+
+const standingsGuest = lobby(inviteHash);
+Object.assign(standingsGuest.elements["guest-view"], { clientWidth: 1600, clientHeight: 960, videoWidth: 1200, videoHeight: 800 });
+standingsGuest.context.snapshot = standings;
+vm.runInContext('openGame("guest"); channel = { open: true, close() {} }; receiveGuestStandings(channel, ["standings", snapshot]);',
+  standingsGuest.context);
+const overlay = standingsGuest.elements["guest-standings"];
+const rows = standingsGuest.elements["guest-standings-rows"];
+assert.equal(overlay.hidden, false);
+assert.ok(Math.abs(parseFloat(overlay.style.left) - 324.8) < .01 && parseFloat(overlay.style.top) === 165,
+  "The DOM board should align inside the video and game letterboxes");
+assert.equal(rows.children.length, 10);
+assert.equal(rows.children[0].children[1].textContent, 27);
+const firstRow = rows.children[0];
+vm.runInContext('receiveGuestStandings(channel, ["standings", [1.6, [1700, 2000, 1880, 1500], snapshot[2]]]);',
+  standingsGuest.context);
+assert.equal(rows.children[0], firstRow, "Moving between menus must reuse unchanged rank rows");
+assert.equal(parseFloat(overlay.style.top), 210);
+vm.runInContext('receiveGuestStandings({}, ["standings", null]); receiveGuestStandings(channel, ["standings", []]);',
+  standingsGuest.context);
+assert.equal(overlay.hidden, false, "Invalid packets should not affect the current overlay");
+vm.runInContext('receiveGuestStandings(channel, ["standings", null]);', standingsGuest.context);
+assert.equal(overlay.hidden, true);
+vm.runInContext('receiveGuestStandings(channel, ["standings", snapshot]); returnHome();', standingsGuest.context);
+assert.equal(overlay.hidden, true, "Disconnecting must hide the guest board");
 
 const sharing = lobby();
 let pendingFrame;

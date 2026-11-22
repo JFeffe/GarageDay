@@ -10,6 +10,7 @@ const qualities = {
 };
 const protocol = 2;
 const captureFps = 30;
+const standingsInterval = 250;
 let invitation = new URLSearchParams(location.hash.slice(1)).get("join");
 const validRoom = id => /^gd-[0-9a-f]{32}$/.test(id ?? "");
 const openInput = [0, 0, 0, 0, 0, 0, 0];
@@ -26,6 +27,10 @@ let screen = "home";
 let lastInput = openInput;
 let pressed = 0;
 let lastInputAt = 0;
+let hostStandings = "";
+let sentStandings = "";
+let guestStandings;
+let guestStandingsRows = "";
 const keys = new Set();
 
 function loadSave(mode) {
@@ -86,6 +91,9 @@ window.GarageDay = {
     const response = JSON.stringify([online, ...(recent ? lastInput : openInput), recent ? pressed : 0]);
     pressed = 0;
     return response;
+  },
+  reportStandings(snapshot) {
+    if (launch.mode === "host" && launch.activity === "endurance") hostStandings = snapshot;
   },
   gameAudio(encoded, sampleRate) {
     if (!stream || !gameSound || gameSound.context.state !== "running") return;
@@ -158,6 +166,8 @@ function updateDisplay() {
 
 function openGame(mode, layout = defaultLayout, save = "", activity = "workshop") {
   launch = { mode, layout, save, activity };
+  hostStandings = sentStandings = "";
+  hideGuestStandings();
   ready = paused = false;
   elements["paused-race-clock"].textContent = "";
   gameControls = undefined;
@@ -250,6 +260,8 @@ function clearConnection() {
   if (gameSound) gameSound.cursor = 0;
   lastInput = openInput;
   pressed = lastInputAt = 0;
+  hostStandings = sentStandings = "";
+  hideGuestStandings();
 }
 
 function inviteLink(id) {
@@ -381,9 +393,13 @@ function joinGame() {
     const lost = message => { if (peer === roomPeer) returnHome(message); };
     roomPeer.on("open", () => {
       if (peer !== roomPeer) return;
-      channel = roomPeer.connect(invitation, { reliable: true, serialization: "json", metadata: { protocol } });
-      channel.on("close", () => lost("La partie de l’hôte a été fermée ou la place est occupée."));
-      channel.on("error", () => lost("Connexion à l’hôte interrompue."));
+      const link = roomPeer.connect(invitation, {
+        reliable: true, serialization: "json", metadata: { protocol, standingsOverlay: true },
+      });
+      channel = link;
+      link.on("data", message => receiveGuestStandings(link, message));
+      link.on("close", () => lost("La partie de l’hôte a été fermée ou la place est occupée."));
+      link.on("error", () => lost("Connexion à l’hôte interrompue."));
     });
     roomPeer.on("error", () => lost("Impossible de joindre l’hôte. Vérifie que sa partie est ouverte."));
     roomPeer.on("call", incoming => {
@@ -432,6 +448,82 @@ function receiveInput(source, input) {
   lastInputAt = performance.now();
 }
 
+function flushStandings() {
+  if (launch.mode !== "host" || !channel?.open || channel.metadata?.standingsOverlay !== true ||
+      hostStandings === sentStandings) return;
+  // Coalesce to the latest snapshot and leave a busy connection to the game.
+  if (channel.bufferSize > 0 || channel.dataChannel?.bufferedAmount > 0) return;
+  channel.send(["standings", hostStandings ? JSON.parse(hostStandings) : null]);
+  sentStandings = hostStandings;
+}
+
+function hideGuestStandings() {
+  guestStandings = undefined;
+  guestStandingsRows = "";
+  elements["guest-standings"].hidden = true;
+  elements["guest-standings-rows"].replaceChildren();
+}
+
+function receiveGuestStandings(source, message) {
+  if (launch.mode !== "guest" || source !== channel || !source.open) return;
+  if (!Array.isArray(message) || message.length !== 2 || message[0] !== "standings") return;
+  const snapshot = message[1];
+  if (snapshot === null) {
+    hideGuestStandings();
+    return;
+  }
+  if (!Array.isArray(snapshot) || snapshot.length !== 3) return;
+  const [aspect, bounds, rows] = snapshot;
+  if (!Number.isFinite(aspect) || aspect < .5 || aspect > 4) return;
+  if (!Array.isArray(bounds) || bounds.length !== 4 ||
+      !bounds.every(value => Number.isInteger(value) && value >= 0 && value <= 10000)) return;
+  const [x, y, width, height] = bounds;
+  if (!width || !height || x + width > 10001 || y + height > 10001) return;
+  if (!Array.isArray(rows) || rows.length !== 10 || !rows.every(row =>
+    Array.isArray(row) && row.length === 3 && Number.isInteger(row[0]) && row[0] > 0 && row[0] <= 999 &&
+    typeof row[1] === "string" && row[1].length > 0 && row[1].length <= 48 &&
+    typeof row[2] === "string" && /^#[0-9a-f]{6}$/i.test(row[2]))) return;
+  guestStandings = { aspect, bounds };
+  const key = JSON.stringify(rows);
+  if (key !== guestStandingsRows) {
+    elements["guest-standings-rows"].replaceChildren(...rows.map(([number, team, color], index) => {
+      const row = document.createElement("li");
+      row.style.color = color;
+      const rank = document.createElement("span");
+      rank.textContent = index + 1;
+      const car = document.createElement("b");
+      car.textContent = number;
+      const name = document.createElement("span");
+      name.textContent = team;
+      row.append(rank, car, name);
+      return row;
+    }));
+    guestStandingsRows = key;
+  }
+  positionGuestStandings();
+}
+
+function positionGuestStandings() {
+  if (!guestStandings) return;
+  const overlay = elements["guest-standings"];
+  const video = elements["guest-view"];
+  const { clientWidth, clientHeight, videoWidth, videoHeight } = video;
+  overlay.hidden = !clientWidth || !clientHeight || !videoWidth || !videoHeight;
+  if (overlay.hidden) return;
+  const { aspect, bounds: [x, y, width, height] } = guestStandings;
+  const videoAspect = videoWidth / videoHeight;
+  const frameWidth = Math.min(clientWidth, clientHeight * videoAspect);
+  const frameHeight = frameWidth / videoAspect;
+  // The video can be letterboxed again around Godot's fixed-aspect viewport.
+  const sceneWidth = Math.min(frameWidth, frameHeight * aspect);
+  const sceneHeight = sceneWidth / aspect;
+  const { style } = overlay;
+  style.left = `${(clientWidth - sceneWidth) / 2 + x * sceneWidth / 10000}px`;
+  style.top = `${(clientHeight - sceneHeight) / 2 + y * sceneHeight / 10000}px`;
+  style.width = `${width * sceneWidth / 10000}px`;
+  style.height = `${height * sceneHeight / 10000}px`;
+}
+
 const keyAxis = (negative, positive) =>
   Number(positive.some(key => keys.has(key))) - Number(negative.some(key => keys.has(key)));
 function sendInput() {
@@ -475,7 +567,10 @@ for (const event of ["keydown", "keyup"]) {
 }
 addEventListener("blur", () => { keys.clear(); sendInput(); });
 addEventListener("pagehide", () => peer?.destroy());
+addEventListener("resize", positionGuestStandings);
+elements["guest-view"].addEventListener("resize", positionGuestStandings);
 setInterval(sendInput, 33);
+setInterval(flushStandings, standingsInterval);
 
 elements["start-form"].addEventListener("submit", event => {
   event.preventDefault();

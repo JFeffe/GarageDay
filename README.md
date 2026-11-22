@@ -46,6 +46,8 @@ Comme dans le garage de quartier, marche au **stick gauche / WASD / flèches**, 
 
 Dans le navigateur, **Multijoueur → Créer une partie → Course de 12 h** partage la course. Les deux mécanos peuvent utiliser le poste de contrôle pour les deux GT. Pendant que l’un s’occupe de la stratégie, l’autre peut continuer à travailler dans les stands. La course peut être mise en pause et reprise tant que la session reste ouverte. Les sauvegardes d’atelier sont indépendantes.
 
+Au poste, le navigateur de l’invité affiche le classement en texte par-dessus la vidéo. L’hôte envoie les changements au plus quatre fois par seconde sur la connexion existante.
+
 ## Commandes
 
 | Action | Manette Xbox | Clavier |
