@@ -5,6 +5,9 @@ const HostSave := preload("res://host_save.gd")
 const Coop := preload("res://workshop_coop.gd")
 const GameMenu := preload("res://game_menu.gd")
 const Map := preload("res://workshop_map.gd")
+const EnduranceRace := preload("res://endurance_race.gd")
+const EnduranceStands := preload("res://endurance_stands.gd")
+const EnduranceHud := preload("res://endurance_hud.gd")
 const BINDINGS := {
 	"pause_game": [KEY_ESCAPE, JOY_BUTTON_START],
 	"reset": [KEY_F9, JOY_BUTTON_BACK],
@@ -28,6 +31,11 @@ var room_audio: AudioEffectCapture
 var room_audio_rate := 0
 var game_menu: CanvasLayer
 var session_active := false
+var endurance_active := false
+var endurance: EnduranceRace
+var endurance_stands: EnduranceStands
+var endurance_hud: EnduranceHud
+var endurance_refresh := 0.0
 var local_storage_enabled := true
 var local_save_path := "user://solo.save"
 var settings_path := "user://display.cfg"
@@ -66,6 +74,7 @@ func _ready() -> void:
 			InputMap.action_add_event(action,button)
 	player_visual.build(self,avatar)
 	var initial_layout := Map.COMPACT_LAYOUT
+	var launch_endurance := false
 	var checkpoint := ""
 	if OS.has_feature("web"):
 		web_room = JavaScriptBridge.get_interface("window").parent.GarageDay
@@ -73,8 +82,9 @@ func _ready() -> void:
 			var launch: Variant = JSON.parse_string(web_room.startInfo())
 			if launch is Dictionary:
 				initial_layout = clampi(int(launch.get("layout",Map.COMPACT_LAYOUT)),0,Map.LAYOUTS.size()-1)
+				launch_endurance = launch.get("activity")=="endurance"
 				hosting = launch.get("mode")=="host"
-				checkpoint = str(launch.get("save",""))
+				if not launch_endurance: checkpoint = str(launch.get("save",""))
 				apply_graphics(str(launch.get("quality","balanced")),bool(launch.get("showFps",false)))
 				if hosting:
 					workshop.coop = Coop.new()
@@ -93,8 +103,10 @@ func _ready() -> void:
 	game_menu.game = self
 	add_child(game_menu)
 	if OS.has_feature("web"):
-		session_active = true
-		store_checkpoint()
+		if launch_endurance: start_endurance()
+		else:
+			session_active = true
+			store_checkpoint()
 	else:
 		if DisplayServer.get_name()!="headless": DisplayServer.window_set_min_size(Vector2i(960,600))
 		load_display_settings()
@@ -129,6 +141,7 @@ func saved_game() -> String:
 	return FileAccess.get_file_as_string(local_save_path)
 
 func start_local_game(layout: int) -> void:
+	hide_endurance()
 	workshop.menu.hide()
 	workshop.build(layout)
 	session_active = true
@@ -144,7 +157,53 @@ func continue_local_game() -> void:
 			return
 		last_checkpoint = checkpoint
 		session_active = true
+	hide_endurance()
 	game_menu.resume_game()
+
+func start_endurance() -> void:
+	store_checkpoint()
+	if endurance==null:
+		endurance = EnduranceRace.new()
+		endurance.setup(randi())
+		endurance_stands = EnduranceStands.new()
+		add_child(endurance_stands)
+		endurance_stands.build()
+		endurance_hud = EnduranceHud.new()
+		add_child(endurance_hud)
+		endurance_hud.build(endurance)
+		endurance_hud.restart_requested.connect(start_endurance)
+		endurance_hud.exit_requested.connect(game_menu.return_home)
+	else:
+		endurance.setup(randi())
+	resume_endurance()
+
+func endurance_in_progress() -> bool:
+	return endurance!=null and endurance.phase!=EnduranceRace.Phase.FINISH
+
+func resume_endurance() -> void:
+	endurance_active = true
+	workshop.site.hide()
+	workshop.engine.stream_paused = true
+	avatar.hide()
+	endurance_stands.show()
+	endurance_stands.frame(camera)
+	endurance_stands.update_cars(endurance,0.0)
+	endurance_hud.refresh()
+	game_menu.resume_game()
+
+func hide_endurance() -> void:
+	if not endurance_active: return
+	endurance_active = false
+	endurance_hud.hide()
+	endurance_stands.hide()
+	workshop.site.show()
+	workshop.engine.stream_paused = false
+	avatar.visible = workshop.driven_bay<0
+	workshop.update_camera(1.0)
+
+func show_activity_hud(value: bool) -> void:
+	workshop.ui.visible = value and not endurance_active
+	if endurance_hud!=null: endurance_hud.visible = value and endurance_active
 
 func control_web_game(args: Array) -> void:
 	match args[0]:
@@ -188,17 +247,31 @@ func _process(dt: float) -> void:
 		if web_room!=null: web_room.reportFps(Engine.get_frames_per_second())
 
 func _physics_process(dt: float) -> void:
-	if not session_active: return
+	if not session_active and not endurance_active: return
 	if hosting:
 		var controls: Variant = JSON.parse_string(web_room.guestInput())
 		workshop.guest_input = controls if controls is Array else []
-	workshop.tick(dt)
+	if endurance_active: tick_endurance(dt)
+	else: workshop.tick(dt)
 	if hosting:
 		send_room_audio()
+	if endurance_active: return
 	save_elapsed += dt
 	if save_elapsed>=0.8:
 		save_elapsed = 0.0
 		store_checkpoint()
+
+func tick_endurance(dt: float) -> void:
+	var phase := endurance.phase
+	if hosting: endurance_hud.guest_input(workshop.guest_input)
+	endurance.advance(dt*endurance.rate())
+	endurance_stands.update_cars(endurance,dt)
+	endurance_refresh += dt
+	if endurance_refresh>=0.10 or phase!=endurance.phase:
+		endurance_refresh = 0.0
+		endurance_hud.refresh()
+		if phase!=endurance.phase or get_viewport().gui_get_focus_owner()==null:
+			endurance_hud.focus_first()
 
 func send_room_audio() -> void:
 	var available := room_audio.get_frames_available()
@@ -210,7 +283,7 @@ func send_room_audio() -> void:
 	web_room.gameAudio(Marshalls.raw_to_base64(frames.to_byte_array()),room_audio_rate)
 
 func store_checkpoint() -> void:
-	if not session_active or workshop.relocating!="": return
+	if not session_active or endurance_active or workshop.relocating!="": return
 	if workshop.run.mode not in ["open","lost","won"]: return
 	var data := HostSave.capture(workshop) if workshop.run.mode=="open" else ""
 	if data==last_checkpoint: return

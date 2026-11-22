@@ -14,7 +14,7 @@ let invitation = new URLSearchParams(location.hash.slice(1)).get("join");
 const validRoom = id => /^gd-[0-9a-f]{32}$/.test(id ?? "");
 const openInput = [0, 0, 0, 0, 0, 0, 0];
 const defaultLayout = 3;
-let launch = { mode: "solo", layout: defaultLayout, save: "" };
+let launch = { mode: "solo", layout: defaultLayout, save: "", activity: "workshop" };
 let peer, channel, call, stream, timeout;
 let stopCapturing;
 let gameSound;
@@ -105,6 +105,7 @@ window.GarageDay = {
     gameSound.cursor += buffer.duration;
   },
   storeSave(data) {
+    if (launch.activity === "endurance") return;
     const key = saveKeys[launch.mode];
     if (!key) return;
     try {
@@ -149,8 +150,8 @@ function updateDisplay() {
   if (elements.fps.hidden) elements.fps.textContent = "";
 }
 
-function openGame(mode, layout = defaultLayout, save = "") {
-  launch = { mode, layout, save };
+function openGame(mode, layout = defaultLayout, save = "", activity = "workshop") {
+  launch = { mode, layout, save, activity };
   ready = paused = false;
   gameControls = undefined;
   elements.lobby.hidden = true;
@@ -264,8 +265,9 @@ function showInvitation() {
   if (!channel?.open) elements["room-status"].textContent = "En attente d’un invité";
 }
 
-function hostGame(layout, save = "") {
-  if (paused && !confirm("Fermer le solo pour héberger ? La reprise solo se fera au dernier atelier libre sauvegardé.")) return;
+function hostGame(layout, save = "", activity = "workshop") {
+  const resumeNote = launch.activity === "endurance" ? "La course solo prendra fin." : "La reprise solo se fera au dernier atelier libre sauvegardé.";
+  if (paused && !confirm("Fermer le solo pour héberger ? " + resumeNote)) return;
   try {
     const id = "gd-" + crypto.randomUUID().replaceAll("-", "");
     peer = peerFor(id);
@@ -275,7 +277,7 @@ function hostGame(layout, save = "") {
       gameSound = { context, destination: context.createMediaStreamDestination(), cursor: 0 };
       context.resume().catch(() => {});
     }
-    openGame("host", layout, save);
+    openGame("host", layout, save, activity);
     const roomPeer = peer;
     elements["room-status"].textContent = "Création du lien…";
     roomPeer.on("open", () => {
@@ -437,8 +439,10 @@ function sendInput() {
   const buttons = [["KeyE", 3], ["KeyR", 2], ["KeyF", 0], ["KeyQ", 1]];
   const bits = buttons.reduce((mask, [key, index], i) =>
     mask | (keys.has(key) || pad?.buttons[index]?.pressed ? 1 << i : 0), 0);
-  const keyX = keyAxis(["KeyA", "ArrowLeft"], ["KeyD", "ArrowRight"]);
-  const keyY = keyAxis(["KeyW", "ArrowUp"], ["KeyS", "ArrowDown"]);
+  const dpadX = Number(!!pad?.buttons[15]?.pressed) - Number(!!pad?.buttons[14]?.pressed);
+  const dpadY = Number(!!pad?.buttons[13]?.pressed) - Number(!!pad?.buttons[12]?.pressed);
+  const keyX = keyAxis(["KeyA", "ArrowLeft"], ["KeyD", "ArrowRight"]) || dpadX;
+  const keyY = keyAxis(["KeyW", "ArrowUp"], ["KeyS", "ArrowDown"]) || dpadY;
   const drivingWithPad = pad && Math.max(Math.abs(pad.axes[2]), Math.abs(pad.axes[1])) > .16;
   channel.send([
     axis(0, keyX, .2),
@@ -469,12 +473,20 @@ setInterval(sendInput, 33);
 const selectedLayout = () => Number(new FormData(elements["start-form"]).get("layout"));
 elements["start-form"].addEventListener("submit", event => {
   event.preventDefault();
-  if ((loadSave(pickerMode) || (pickerMode === "solo" && paused)) &&
+  if (pickerMode === "solo" && paused && launch.activity === "endurance" &&
+      !confirm("Terminer la course en cours pour ouvrir un garage ?")) return;
+  if ((loadSave(pickerMode) || (pickerMode === "solo" && paused && launch.activity === "workshop")) &&
       !confirm("Remplacer la sauvegarde de cette partie ?")) return;
   if (pickerMode === "host") hostGame(selectedLayout());
   else openGame("solo", selectedLayout());
 });
 elements["new-game"].addEventListener("click", () => openPicker("solo"));
+elements.endurance.addEventListener("click", startEndurance);
+function startEndurance() {
+  if (paused && !confirm(launch.activity === "endurance" ? "Remplacer la course en cours ?" :
+    "Fermer le garage pour lancer la course ? La reprise se fera au dernier atelier libre sauvegardé.")) return;
+  openGame("solo", defaultLayout, "", "endurance");
+}
 elements["multiplayer-button"].addEventListener("click", () => showScreen("multiplayer"));
 elements["options-button"].addEventListener("click", () => showScreen("options"));
 elements["notes-button"].addEventListener("click", () => showScreen("patch-notes"));
@@ -484,6 +496,7 @@ elements.back.addEventListener("click", () => {
 });
 elements.resume.addEventListener("click", continueGame);
 elements.host.addEventListener("click", () => openPicker("host"));
+elements["host-endurance"].addEventListener("click", () => hostGame(defaultLayout, "", "endurance"));
 elements["resume-host"].addEventListener("click", () => hostGame(defaultLayout, loadSave("host")));
 elements["join-form"].addEventListener("submit", event => {
   event.preventDefault();

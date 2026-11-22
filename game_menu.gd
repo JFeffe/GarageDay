@@ -106,7 +106,7 @@ func _input(event: InputEvent) -> void:
 func page(id: String, title: String, subtitle := "") -> void:
 	screen = id
 	game.get_tree().paused = true
-	game.workshop.ui.visible = false
+	game.show_activity_hud(false)
 	pause_button.hide()
 	overlay.color = Color(0.04,0.09,0.10,0.94) if id=="pause" else INK
 	overlay.show()
@@ -155,7 +155,7 @@ func picture(texture: Texture2D, width: float, height: float) -> TextureRect:
 
 func show_home() -> void:
 	game.store_checkpoint()
-	page("home","Garage Day","Fais tourner ton garage de quartier.")
+	page("home","Garage Day","Atelier de quartier et course d’endurance.")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",36)
 	content.add_child(row)
@@ -166,6 +166,8 @@ func show_home() -> void:
 	if game.session_active or not game.saved_game().is_empty():
 		button(actions,"Continuer",game.continue_local_game)
 	button(actions,"Nouvelle partie",request_new_game)
+	if game.endurance_in_progress(): button(actions,"Reprendre les 12 h",game.resume_endurance)
+	else: button(actions,"Course de 12 h",game.start_endurance)
 	button(actions,"Multijoueur",show_multiplayer)
 	button(actions,"Options",func() -> void: show_options("home"))
 	button(actions,"Notes de mise à jour",show_notes)
@@ -175,9 +177,9 @@ func show_home() -> void:
 	content.add_child(label("v"+str(ProjectSettings.get_setting("application/config/version")),14,MINT))
 
 func show_pause() -> void:
-	if not game.session_active: return
+	if not game.session_active and not game.endurance_active: return
 	game.store_checkpoint()
-	page("pause","Pause","Le garage est en pause. Reprends quand tu veux.")
+	page("pause","Pause","La course est en pause." if game.endurance_active else "Le garage est en pause. Reprends quand tu veux.")
 	button(content,"Reprendre",resume_game)
 	button(content,"Options",func() -> void: show_options("pause"))
 	button(content,"Retour au menu d’accueil",return_home)
@@ -188,18 +190,21 @@ func resume_game() -> void:
 	screen = ""
 	overlay.hide()
 	pause_button.show()
-	game.workshop.ui.show()
+	game.show_activity_hud(true)
 	# Resume on the next frame so accepting the menu cannot interact with the garage.
 	resume_after_input.call_deferred()
 
 func resume_after_input() -> void:
 	await get_tree().process_frame
-	if screen=="": get_tree().paused = false
+	if screen=="":
+		get_tree().paused = false
+		if game.endurance_active: game.endurance_hud.focus_first()
 
 func return_home() -> void:
 	if game.web_room!=null:
 		if game.hosting:
-			page("leave_host","Quitter la partie ?","La connexion de l’invité sera fermée. La reprise se fera au dernier atelier libre sauvegardé.")
+			var detail := "L’invité sera déconnecté et la course prendra fin." if game.endurance_active else "La connexion de l’invité sera fermée. La reprise se fera au dernier atelier libre sauvegardé."
+			page("leave_host","Quitter la partie ?",detail)
 			button(content,"Rester dans le garage",show_pause)
 			button(content,"Retour à l’accueil",func() -> void: game.web_room.returnToMenu())
 		else: game.web_room.returnToMenu()
@@ -273,8 +278,8 @@ func show_multiplayer() -> void:
 	button(content,"Retour",show_home)
 
 func show_notes() -> void:
-	page("notes","Notes de mise à jour","0.1.6 · Le Petit Atelier")
-	content.add_child(label("• Un quatrième garage avec une baie, un atelier réduit et des salles plus petites.\n• Le Petit Atelier apparaît en premier dans le choix du garage.",20,MINT))
+	page("notes","Notes de mise à jour","0.1.7 · Les 12 h de Garage Day")
+	content.add_child(label("Deux GT, une équipe de quatre pilotes et huit voitures rivales. Gère les arrêts et les réparations pendant une course de 12 heures simulées.",20,MINT))
 	button(content,"Retour",show_home)
 
 func show_message(message: String) -> void:

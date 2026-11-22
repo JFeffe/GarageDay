@@ -32,6 +32,14 @@ Le bouton **Multijoueur** ouvre le mode Web dans le navigateur pour héberger ou
 
 **View / F9** ouvre le menu de nouvelle partie. Tu peux choisir **Le Petit Atelier** avec une baie et des salles réduites, **La Traversée** avec une baie, **Le Tandem** avec deux ou **Les Trois Ponts** avec trois.
 
+## Les 12 h de Garage Day
+
+Choisis **Course de 12 h** à l’accueil, en local ou dans le navigateur. Tu gères les n° 27 et 81, chacune avec deux pilotes. Huit GT rivales roulent et s’arrêtent pendant que le classement se met à jour. L’horloge accélère en piste et ralentit lorsque tes voitures arrivent aux stands.
+
+Appelle une GT au box ou attends l’arrêt prévu. Les flèches ou la croix sélectionnent les ordres et **A / F** les valident. Change les pneus, fais le plein et alterne les pilotes. Un accrochage léger se répare au box. Rentre une voiture plus abîmée au garage pour la réparer et libérer la place extérieure. Sélectionne **Reprendre la piste** quand elle est prête.
+
+Dans le navigateur, **Multijoueur → Héberger les 12 h** partage la course. L’invité sélectionne les ordres de la n° 81 avec son stick ou ses flèches et les valide avec **A / F**. La course peut être mise en pause et reprise tant que la session reste ouverte. Les sauvegardes d’atelier sont indépendantes.
+
 ## Commandes
 
 | Action | Manette Xbox | Clavier |
@@ -56,6 +64,7 @@ Depuis la racine, avec l’exécutable Godot accessible sous le nom `godot` dans
 godot --headless --editor --import --path .
 godot --headless --path . --script res://test_workshop.gd --quit-after 1100
 godot --headless --path . --script res://test_game_menu.gd
+godot --headless --path . --script res://test_endurance.gd
 node test_lobby.cjs
 ```
 
@@ -66,5 +75,6 @@ Les modèles et textures tiers inclus proviennent des packs suivants, distribué
 - Kenney pour les véhicules, les meubles et le personnage animé. [Car Kit](https://kenney.nl/assets/car-kit) · [Furniture Kit](https://kenney.nl/assets/furniture-kit) · [Animated Characters Protagonists](https://kenney.nl/assets/animated-characters-protagonists)
 - Grab3D pour le pont et plusieurs pièces mécaniques. Le pont est adapté pour dégager la vue. [Cozy Car Parts & Garage Kit](https://grab3d.com/kits/cozy-car-parts/)
 - 3DAssets.dev pour le mobilier et l’équipement du garage. Les modèles utilisés ont été adaptés au format glTF de Godot. [Car Repair Garage and MOT Workshop](https://3dassets.dev/packs/car-repair-garage-and-mot-workshop)
+- 3DAssets.dev pour les deux GT d’endurance, réexportées pour Godot et recolorées dans le jeu. [GT à moteur avant](https://3dassets.dev/assets/endurance-and-gt-paddock-front-engine-gt-coupe-ff0949d7) · [Coupé GT4](https://3dassets.dev/assets/endurance-and-gt-paddock-gt4-sports-car-69ecfad1)
 
 Noto Sans Symbols 2 fournit les caractères spéciaux de l’interface. [Police](https://fonts.google.com/noto/specimen/Noto+Sans+Symbols+2) · [SIL Open Font License 1.1](assets/fonts/OFL.txt)

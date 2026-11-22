@@ -30,6 +30,15 @@ const mapOptions = [...fs.readFileSync(`${__dirname}/web/index.html`, "utf8")
 assert.deepEqual(mapOptions.map(([, id]) => Number(id)), [3, 0, 1, 2]);
 assert.equal(mapOptions[0][2], " checked", "The compact map must be selected by default");
 assert.equal(JSON.parse(page.bridge.startInfo()).layout, 3);
+const endurance = lobby();
+endurance.bridge.storeSave("garage-checkpoint");
+vm.runInContext('startEndurance(); ready = true; gameControls = () => {};', endurance.context);
+assert.equal(JSON.parse(endurance.bridge.startInfo()).activity, "endurance");
+endurance.bridge.storeSave("race-state");
+assert.equal(endurance.saved.get("garage-day.solo.v1"), "garage-checkpoint");
+vm.runInContext("pauseSolo(); continueGame();", endurance.context);
+assert.equal(JSON.parse(endurance.bridge.startInfo()).activity, "endurance");
+assert.equal(endurance.elements.game.hidden, false);
 assert.equal(page.elements.multiplayer.hidden, false, "The native link must open multiplayer directly");
 assert.equal(page.elements.home.hidden, true);
 page.bridge.setDisplay("fast", true);

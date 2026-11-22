@@ -20,10 +20,11 @@
     <section class="home" id="home" aria-labelledby="title">
       <div class="home-menu">
         <h1 id="title">Garage <span>Day</span></h1>
-        <p>Fais tourner ton garage de quartier.</p>
+        <p>Atelier de quartier et course d’endurance.</p>
         <nav class="menu-buttons" aria-label="Menu principal">
           <button class="primary" id="resume" type="button" hidden>Continuer</button>
           <button class="primary" id="new-game" type="button">Nouvelle partie</button>
+          <button id="endurance" type="button">Course de 12 h</button>
           <button id="multiplayer-button" type="button">Multijoueur</button>
           <button id="options-button" type="button">Options</button>
         </nav>
@@ -70,6 +71,7 @@
       <p>Jouez à deux sur la même caméra. La progression est sauvegardée dans le navigateur de l’hôte.</p>
       <div class="inline-actions">
         <button class="primary" id="host" type="button">Créer une partie</button>
+        <button id="host-endurance" type="button">Héberger les 12 h</button>
         <button id="resume-host" type="button" hidden>Reprendre comme hôte</button>
       </div>
       <form class="join-form" id="join-form">
@@ -125,6 +127,11 @@
     <section class="screen" id="patch-notes" aria-labelledby="notes-title" hidden>
       <h2 id="notes-title" tabindex="-1">Notes de mise à jour</h2>
       <article class="panel release">
+        <h3>0.1.7 <span>Les 12 h de Garage Day</span></h3>
+        <ul>
+          <li>Deux GT, quatre pilotes et huit voitures rivales sur une course simulée de douze heures.</li>
+          <li>Gère la stratégie des relais, les arrêts au box et les réparations au garage, en solo ou à deux.</li>
+        </ul>
         <h3>0.1.6 <span>Le Petit Atelier</span></h3>
         <ul>
           <li>Un quatrième garage avec une seule baie, un atelier réduit et des salles plus petites.</li>
