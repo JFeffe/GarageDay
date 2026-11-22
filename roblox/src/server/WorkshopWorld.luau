@@ -110,18 +110,24 @@ local function buildRoom(room)
 		end
 	end
 
-	local spawn = Instance.new("SpawnLocation")
-	spawn.Name = "Arrivée"
-	spawn.Size = Vector3.new(5, 0.4, 3)
-	spawn.CFrame = CFrame.lookAt(Vector3.new(8.3, 0.4, 12.3), Vector3.new(7.3, 0.4, 7.8))
-	spawn.Anchored = true
-	spawn.Transparency = 1
-	spawn.CanCollide = false
-	spawn.CanQuery = false
-	spawn.CanTouch = false
-	spawn.Neutral = true
-	spawn.Duration = 0
-	spawn.Parent = room
+	local spawns = {}
+	local positions = { Vector3.new(8.3, 0.4, 12.3), Vector3.new(12.7, 0.4, 10.1) }
+	for i, position in positions do
+		local spawn = Instance.new("SpawnLocation")
+		spawn.Name = "Arrivée " .. i
+		spawn.Size = Vector3.new(2.4, 0.4, 2.4)
+		spawn.CFrame = CFrame.lookAt(position, Vector3.new(7.3, 0.4, 7.8))
+		spawn.Anchored = true
+		spawn.Transparency = 1
+		spawn.CanCollide = false
+		spawn.CanQuery = false
+		spawn.CanTouch = false
+		spawn.Neutral = true
+		spawn.Duration = 0
+		spawn.Parent = room
+		spawns[i] = spawn
+	end
+	return spawns
 end
 
 local function fitMesh(mesh, parent, origin)
@@ -224,7 +230,7 @@ end
 
 function World.build()
 	local room = model(workspace, "Le Petit Atelier")
-	buildRoom(room)
+	local spawns = buildRoom(room)
 	local meshes = MeshLibrary.load()
 	room:SetAttribute("OriginalModels", meshes.Sedan ~= nil)
 	local moving = model(room, "Plateforme mobile")
@@ -233,7 +239,7 @@ function World.build()
 	local tools, wrench, shelf, pads = buildSupplies(room, meshes)
 	moving.WorldPivot = CFrame.identity
 	return {
-		room = room, moving = moving, wheel = wheel, wheelHome = wheel.CFrame, removedPose = removedPose,
+		room = room, spawns = spawns, moving = moving, wheel = wheel, wheelHome = wheel.CFrame, removedPose = removedPose,
 		rotor = rotor, caliper = caliper, wrench = wrench, pads = pads,
 		targets = { Lever = lever, Wheel = attachment, Tools = tools, Shelf = shelf },
 	}

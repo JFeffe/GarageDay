@@ -91,14 +91,30 @@ local function release(player)
 	refresh()
 end
 
+local spawnOwners = {}
 local function watchPlayer(player)
+	for _, spawn in world.spawns do
+		if not spawnOwners[spawn] then
+			spawnOwners[spawn] = player
+			player.RespawnLocation = spawn
+			if player.Character then
+				player.Character:PivotTo(spawn.CFrame + Vector3.new(0, 3, 0))
+			end
+			break
+		end
+	end
 	player.CharacterRemoving:Connect(function()
 		release(player)
 	end)
 end
 
 Players.PlayerAdded:Connect(watchPlayer)
-Players.PlayerRemoving:Connect(release)
+Players.PlayerRemoving:Connect(function(player)
+	for spawn, owner in spawnOwners do
+		if owner == player then spawnOwners[spawn] = nil end
+	end
+	release(player)
+end)
 for _, player in Players:GetPlayers() do
 	watchPlayer(player)
 end

@@ -1,11 +1,13 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local Repair = require(ReplicatedStorage:WaitForChild("GarageDay"):WaitForChild("Repair"))
 local playerGui = player:WaitForChild("PlayerGui")
 player.CameraMode = Enum.CameraMode.LockFirstPerson
+StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
 
 local cream = Color3.fromRGB(255, 239, 210)
 local mint = Color3.fromRGB(161, 212, 197)
