@@ -4,6 +4,8 @@ Garage Day est un jeu de gestion de garage miniature à jouer à la manette ou a
 
 **[Jouer à Garage Day dans le navigateur](https://jfeffe.github.io/GarageDay/)**
 
+Le [prototype Roblox du Petit Atelier](roblox/README.md) propose une intervention à la première personne en solo ou à deux dans Roblox Studio.
+
 ## Jouer dans le navigateur
 
 **Nouvelle partie** donne accès aux quatre garages, avec **Le Petit Atelier** en premier. En solo, **Menu** met la partie en pause et **Continuer** la reprend. Après la fermeture de l’onglet, la reprise repart du dernier atelier libre sauvegardé, y compris la configuration avant le service. Les sauvegardes solo et multijoueur sont distinctes. Si les deux existent, la sauvegarde solo est accessible via **Continuer** et celle de l’hôte via **Multijoueur**.

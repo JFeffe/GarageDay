@@ -1,0 +1,13 @@
+{
+  "name": "garage-day-roblox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "assets": "node tools/pack-assets.mjs",
+    "build": "npm run assets && rojo build --output \"../build/roblox/Garage Day.rbxlx\""
+  },
+  "devDependencies": {
+    "jpeg-js": "0.4.4",
+    "pngjs": "7.0.0"
+  }
+}

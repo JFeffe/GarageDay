@@ -1,0 +1,30 @@
+{
+  "name": "Garage Day - Le Petit Atelier",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "GarageDay": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "GarageDay": {
+        "$path": "src/server",
+        "MeshData": {
+          "$path": "../build/roblox/MeshData"
+        }
+      }
+    },
+    "StarterPlayer": {
+      "$properties": {
+        "CameraMode": "LockFirstPerson",
+        "CharacterWalkSpeed": 13,
+        "CharacterUseJumpPower": false,
+        "CharacterJumpHeight": 0
+      },
+      "StarterPlayerScripts": {
+        "$path": "src/client"
+      }
+    }
+  }
+}

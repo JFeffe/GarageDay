@@ -1,6 +1,7 @@
 /.godot/
 /build/
 /exports/
+/roblox/node_modules/
 /export_credentials.cfg
 *.log
 .DS_Store
