@@ -14,19 +14,21 @@ func run_test() -> void:
 	game.local_storage_enabled = false
 	root.add_child(game)
 	check(game.game_menu.screen=="home" and paused,"L’accueil local doit ouvrir avec le garage en pause")
-	game.start_local_game(0)
+	game.start_local_game(game.workshop.Map.COMPACT_LAYOUT)
 	await process_frame
 	await process_frame
 	game.set_physics_process(false)
 	var w = game.workshop
-	check(w.layout==0 and w.site.visible and w.run.mode=="open" and not w.menu.visible
-		and w.header.text.contains("GARAGE DAY"),"La nouvelle partie doit démarrer dans La Traversée")
+	check(w.layout==w.Map.COMPACT_LAYOUT and w.site.visible and w.run.mode=="open" and not w.menu.visible
+		and w.header.text.contains("Le Petit Atelier"),"La nouvelle partie doit démarrer dans Le Petit Atelier")
 	w.request_restart()
 	w.menu_chosen(1)
 	check(w.menu.visible and w.menu.kind=="layout","Choix du garage absent lors d’une nouvelle partie")
-	check(w.menu.options.size()==3 and w.menu.options[0][0]=="La Traversée"
-		and w.menu.options[1][0]=="Le Tandem" and w.menu.options[2][0]=="Les Trois Ponts",
-		"Le menu doit afficher les trois garages retenus")
+	check(w.menu.options.size()==4 and w.menu.options[0][0]=="Le Petit Atelier"
+		and w.menu.options[1][0]=="La Traversée" and w.menu.options[2][0]=="Le Tandem"
+		and w.menu.options[3][0]=="Les Trois Ponts","Le petit garage doit précéder les trois garages existants")
+	w.menu_chosen(0)
+	check(w.layout==w.Map.COMPACT_LAYOUT,"Le premier choix du menu doit ouvrir la carte compacte")
 	w.menu_dismissed()
 	for i in range(w.Map.LAYOUTS.size()):
 		w.build(i)
@@ -43,7 +45,7 @@ func run_test() -> void:
 		check(w.site.seats[0].x<2,"La banquette doit être à gauche")
 		check(not w.site.walk_path(w.player,w.site.station_point("phone")-Vector2(-1,0)).is_empty(),"Téléphone inaccessible")
 		check(not w.site.walk_path(w.player,Vector2(3.5,18.5)).is_empty(),"Accès à la cour inaccessible")
-		var door: Vector2 = w.Map.SHOP_PERSONNEL_DOOR.get_center()
+		var door: Vector2 = w.site.personnel_door_area.get_center()
 		var shutter: Vector2 = Vector2(w.site.bays[0].at.x,door.y)
 		check(not w.site.clear_at(shutter) and not w.site.can_see(shutter-Vector2.DOWN,shutter+Vector2.DOWN),
 			"Le rideau d’entrée baissé doit barrer le passage")
@@ -69,13 +71,24 @@ func run_test() -> void:
 				"La disposition de départ doit se limiter au matériel de base")
 			check(w.furniture_routes_ok(w.reachable_tiles(w.player,false)),
 				"Tous les postes de la nouvelle disposition doivent rester accessibles")
+		if i==w.Map.COMPACT_LAYOUT:
+			check(w.site.floor_inside.get_area()==234.0 and w.site.office_tiles().size.x==5
+				and w.site.waiting_area().size.y<4.0,"L’atelier et les salles du Petit Atelier doivent être plus compacts")
+			check(w.furniture_routes_ok(w.reachable_tiles(w.player,false)),
+				"Les postes, les portes et le comptoir du Petit Atelier doivent rester accessibles")
+			for id in w.site.stations:
+				check(w.site.floor_inside.has_point(w.site.station_point(id)),
+					"Le poste doit être dans le Petit Atelier : "+id)
 	check_two_bays(w)
 	check_intro_brakes(w)
+	check_intro_brakes(w,w.Map.COMPACT_LAYOUT)
 	check_fleet_animations(w)
 	check_repair_contacts(w)
 	check_arrival_queue(w)
+	check_arrival_queue(w,w.Map.COMPACT_LAYOUT)
 	check_reception_while_busy(w)
 	check_first_payment(w)
+	check_first_payment(w,w.Map.COMPACT_LAYOUT)
 	check_checkout_queue(w)
 	check_waiting_room_purchases(w)
 	check_arrival_cutoff(w)
@@ -291,7 +304,7 @@ func run_test() -> void:
 	check_additional_upgrades(w)
 	check_rare_vendor_offers(w)
 	for failure in failures: push_error(failure)
-	if failures.is_empty(): print("PASS: dix jours, trois plans, trois voitures indépendantes, réparations, file, piles, chariot, six baies miniatures, ponts indépendants, circulation, moteur à l’avant, bureau assis, arrivées au volant, réception, repère du véhicule accueilli, entrée manuelle, direction progressive, freinage, recentrage, repères verts, dix nouvelles réparations, démontage pneus-freins partagé, prochaines étapes par baie, caisse et accueil indépendants, paiement avant ou après le stationnement, départ des clients au volant, patience récurrente et fin de journée.")
+	if failures.is_empty(): print("PASS: dix jours, quatre plans, trois voitures indépendantes, réparations, file, piles, chariot, six baies miniatures, ponts indépendants, circulation, moteur à l’avant, bureau assis, arrivées au volant, réception, repère du véhicule accueilli, entrée manuelle, direction progressive, freinage, recentrage, repères verts, dix nouvelles réparations, démontage pneus-freins partagé, prochaines étapes par baie, caisse et accueil indépendants, paiement avant ou après le stationnement, départ des clients au volant, patience récurrente et fin de journée.")
 	game.queue_free()
 	await process_frame
 	quit(0 if failures.is_empty() else 1)
@@ -441,8 +454,8 @@ func check_two_bays(w) -> void:
 	site.animate_bays(1.0,{})
 	check(site.bays[0].lift_height==0.0 and site.bays[1].lift_height>0.9,"Le Tandem ne peut pas inverser ses hauteurs")
 
-func check_arrival_queue(w) -> void:
-	w.build(0)
+func check_arrival_queue(w, layout := 0) -> void:
+	w.build(layout)
 	var site = w.site
 	use(w,site.station_point("phone"),"start")
 	var first: Dictionary = w.run.new_order()
@@ -472,12 +485,12 @@ func check_arrival_queue(w) -> void:
 	w.update_hud()
 	check(not site.intake_car_marker.visible,"Une voiture dont le client attend encore est marquée")
 
-func check_intro_brakes(w) -> void:
-	w.build(0)
+func check_intro_brakes(w, layout := 0) -> void:
+	w.build(layout)
 	var site = w.site
 	use(w,site.station_point("phone"),"start")
 	w.run.tick(2.01,w.active_orders())
-	check(w.run.waiting.size()==1,"La Traversée doit proposer son premier ticket dès l’ouverture")
+	check(w.run.waiting.size()==1,"Le garage doit proposer son premier ticket dès l’ouverture")
 	if w.run.waiting.is_empty(): return
 	var order: Dictionary = w.run.waiting.front()
 	check(order.vehicle==0 and order.required==["brakes"],"Le premier ticket doit demander les plaquettes avant sur la berline")
@@ -727,12 +740,12 @@ func dock_incoming(w, bay: Dictionary, verify_controls := false) -> void:
 	finish_docking(w,bay)
 
 func finish_docking(w, bay: Dictionary) -> void:
-	for frame in range(380):
+	for frame in range(480):
 		w.advance_cars(1.0/60.0)
 		var input := Vector2.UP if bay.car.position.z>bay.at.y+0.18 else Vector2.ZERO
 		w.drive_vehicle(input,1.0/60.0)
 		if input==Vector2.ZERO and is_zero_approx(w.drive_speed): break
-	check(w.intake_status(bay)==w.IntakeStatus.READY,"La voiture ne peut pas atteindre le pont par le bas")
+	check(w.intake_status(bay)==w.IntakeStatus.READY,"La voiture ne peut pas atteindre le pont par le bas · %s"%w.intake_prompt(w.intake_status(bay)))
 	w.exit_driver_seat(true)
 	check(w.driven_bay==-1 and bay.status=="parked" and w.site.vehicle_position(bay)==bay.at
 		and w.game.avatar.visible and w.site.clear_at(w.player),"La voiture n’est pas prête en baie après Y/E")
@@ -877,7 +890,7 @@ func park_north(w, bay: Dictionary, verify_assist := false, use_cancel := false)
 		"Le stationnement ne rend pas le personnage au joueur")
 	w.advance_cars(0.5)
 	var path: Dictionary = w.reachable_tiles(w.player,true)
-	check(path.has(Vector2i(3,17)),"Le conducteur ne peut pas revenir par l’accès piéton")
+	check(path.has(w.site.customer_entrance_tile()),"Le conducteur ne peut pas revenir par l’accès piéton")
 	return parked
 
 func invite_customer_to_checkout(w, order_id: int) -> void:
@@ -906,8 +919,8 @@ func wait_at_checkout(w, order_id: int) -> void:
 		w.refresh_visitors(0.05)
 	check(w.visitor_at(order_id,point),"Le client ne rejoint pas la caisse")
 
-func check_first_payment(w) -> void:
-	w.build(0)
+func check_first_payment(w, layout := 0) -> void:
+	w.build(layout)
 	w.menu.hide()
 	var site = w.site
 	var phone: Vector2 = site.station_point("phone")

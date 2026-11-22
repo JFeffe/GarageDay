@@ -50,7 +50,17 @@ func run_test() -> void:
 	check(game.saved_game().is_empty(),"L’accueil ne doit pas créer ni écraser une sauvegarde")
 	check(is_equal_approx(game.get_viewport().scaling_3d_scale,1.0),"Le mode Équilibré en solo doit conserver toute la résolution 3D")
 	menu.request_new_game()
-	check(menu.screen=="layouts","Sans sauvegarde, Nouvelle partie doit proposer les trois garages")
+	check(menu.screen=="layouts","Sans sauvegarde, Nouvelle partie doit proposer les garages")
+	check(menu.first_button.text=="Le Petit Atelier","L’accueil doit présenter le petit garage en premier")
+	await process_frame
+	await press_pad(JOY_BUTTON_A)
+	await frames()
+	check(not paused and game.workshop.layout==game.Map.COMPACT_LAYOUT,"A doit lancer le petit garage depuis l’accueil")
+	menu.return_home()
+	game.session_active = false
+	game.continue_local_game()
+	await frames()
+	check(not paused and game.workshop.layout==game.Map.COMPACT_LAYOUT,"Continuer doit restaurer le petit garage enregistré")
 	game.start_local_game(1)
 	await frames()
 	check(not paused and game.workshop.layout==1 and game.workshop.site.bays.size()==2,"Le Tandem doit démarrer depuis l’accueil")
@@ -140,5 +150,5 @@ func run_test() -> void:
 	paused = false
 	clean_files()
 	for failure in failures: push_error(failure)
-	if failures.is_empty(): print("PASS: accueil, trois garages, Start, vraie pause, sous-menus, reprise en mémoire, sauvegarde locale, options persistantes.")
+	if failures.is_empty(): print("PASS: accueil, choix du garage à la manette, Start, vraie pause, sous-menus, reprise en mémoire, sauvegarde locale, options persistantes.")
 	quit(0 if failures.is_empty() else 1)

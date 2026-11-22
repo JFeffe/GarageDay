@@ -6,7 +6,7 @@ Garage Day est un jeu de gestion de garage miniature à jouer à la manette ou a
 
 ## Jouer dans le navigateur
 
-**Nouvelle partie** donne accès aux trois garages. En solo, **Menu** met la partie en pause et **Continuer** la reprend. Après la fermeture de l’onglet, la reprise repart du dernier atelier libre sauvegardé, y compris la configuration avant le service. Les sauvegardes solo et multijoueur sont distinctes. Si les deux existent, la sauvegarde solo est accessible via **Continuer** et celle de l’hôte via **Multijoueur**.
+**Nouvelle partie** donne accès aux quatre garages, avec **Le Petit Atelier** en premier. En solo, **Menu** met la partie en pause et **Continuer** la reprend. Après la fermeture de l’onglet, la reprise repart du dernier atelier libre sauvegardé, y compris la configuration avant le service. Les sauvegardes solo et multijoueur sont distinctes. Si les deux existent, la sauvegarde solo est accessible via **Continuer** et celle de l’hôte via **Multijoueur**.
 
 Dans **Options**, choisis entre **Fluide**, **Équilibré** et **Qualité**. Tu peux aussi afficher les images par seconde.
 
@@ -24,13 +24,13 @@ Pour ouvrir le projet dans l’éditeur :
 
 1. Importe [project.godot](project.godot) dans le gestionnaire de projets de **Godot 4.5.1**.
 2. Attends la fin de l’import des assets et appuie sur **F5**.
-3. L’accueil propose **Continuer**, **Nouvelle partie**, **Multijoueur**, **Options** et les notes de mise à jour. Choisis un des trois garages pour commencer. Vise le téléphone du bureau et maintiens **A / F** pour ouvrir le service.
+3. L’accueil propose **Continuer**, **Nouvelle partie**, **Multijoueur**, **Options** et les notes de mise à jour. Choisis un des quatre garages pour commencer. Vise le téléphone du bureau et maintiens **A / F** pour ouvrir le service.
 
 **Start / Échap** met le jeu en pause, y compris pendant une réparation ou au volant. Le menu permet de reprendre, de régler les options ou de retourner à l’accueil. **Continuer** reprend exactement la partie tant que le jeu reste ouvert. Après fermeture, la reprise repart du dernier atelier libre sauvegardé, avant le service. Les réglages **Fluide / Équilibré / Qualité** et le compteur d’images par seconde sont conservés sur cet ordinateur. La sauvegarde locale est distincte de celles du navigateur.
 
 Le bouton **Multijoueur** ouvre le mode Web dans le navigateur pour héberger ou rejoindre une partie.
 
-**View / F9** ouvre le menu de nouvelle partie. Tu peux choisir **La Traversée** avec une baie, **Le Tandem** avec deux ou **Les Trois Ponts** avec trois.
+**View / F9** ouvre le menu de nouvelle partie. Tu peux choisir **Le Petit Atelier** avec une baie et des salles réduites, **La Traversée** avec une baie, **Le Tandem** avec deux ou **Les Trois Ponts** avec trois.
 
 ## Commandes
 

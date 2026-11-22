@@ -5,11 +5,28 @@ const Catalog := preload("res://workshop_catalog.gd")
 const Neighborhood := preload("res://workshop_neighborhood.gd")
 const PLANT := preload("res://assets/kenney/pottedPlant.glb")
 
+const COMPACT_LAYOUT := 3
+# The order of the numbered layouts is part of the save format.
 const LAYOUTS := [
 	["La Traversée","1 baie · bureau au nord, réception séparée",1,0],
 	["Le Tandem","2 baies · salle d’attente commune",2,0],
 	["Les Trois Ponts","3 baies · grand hall et bureau central",3,2],
+	["Le Petit Atelier","1 baie · atelier et salles compacts",1,3],
 ]
+const LAYOUT_ORDER := [COMPACT_LAYOUT,0,1,2]
+const COMPACT_STATIONS := {
+	"office_chair":Vector2i(2,1), "reception":Vector2i(1,9),
+	"decor":Vector2i(3,1), "plant":Vector2i(1,11),
+	"tool_tires":Vector2i(16,2), "tool_oil":Vector2i(16,4),
+	"tool_inspection":Vector2i(16,1), "tool_pressure":Vector2i(16,3),
+	"tool_ratchet":Vector2i(7,2), "tool_probe":Vector2i(6,2), "tool_puller":Vector2i(8,2),
+	"rack":Vector2i(6,11), "fresh_oil":Vector2i(5,9),
+	"new_battery":Vector2i(6,8), "coolant":Vector2i(5,11),
+	"parts_chassis":Vector2i(6,10), "parts_electric":Vector2i(7,10),
+	"bench":Vector2i(7,5), "waste_oil":Vector2i(16,8), "trash":Vector2i(16,9),
+	"scrap":Vector2i(16,10), "counter_0":Vector2i(6,4), "counter_1":Vector2i(7,7),
+	"counter_2":Vector2i(16,6),
+}
 const TRAVERSEE_STATIONS := {
 	"tool_pressure": Vector2i(18,1),
 	"tool_inspection": Vector2i(20,1),
@@ -57,6 +74,8 @@ var game: Node3D
 var lift_speed := LIFT_SPEED
 var size := Vector2(22,34)
 var variant := 0
+var compact := false
+var left_width := 7.0
 var floor_inside := Rect2(0,0,22,17)
 var wall_rects: Array[Rect2] = []
 var stations: Dictionary = {}
@@ -66,6 +85,8 @@ var arrivals: Array[Rect2] = []
 var car_holders: Array[Dictionary] = []
 var seats: Array[Vector2] = []
 var portal := Vector2(3.5,16.9)
+var pedestrian_access := PEDESTRIAN_ACCESS
+var personnel_door_area := SHOP_PERSONNEL_DOOR
 var desk_side := Vector2(3.5,11.5)
 var reception_at := Vector2(3.5,12.5)
 var checkout_at := Vector2(2.5,12.5)
@@ -89,19 +110,32 @@ func build(g: Node3D, layout_index: int) -> void:
 	var layout: Array = LAYOUTS[layout_index]
 	var count: int = layout[2]
 	variant = layout[3]
-	size.x = 22+6*(count-1)
-	floor_inside.size.x = size.x
+	compact = layout_index==COMPACT_LAYOUT
+	var depth := 13.0 if compact else 17.0
+	var first_bay_x := 11.5 if compact else 15.5
+	size.x = 18.0 if compact else 22.0+6*(count-1)
+	floor_inside.size = Vector2(size.x,depth)
+	if compact:
+		left_width = 5.0
+		portal = Vector2(2.5,depth-0.1)
+		pedestrian_access = Vector2(6.7,PEDESTRIAN_ACCESS.y)
+		personnel_door_area.position = Vector2(first_bay_x-2.95,depth-0.18)
 	slab(Rect2(-1,-NORTH_APRON-1.0,size.x+2,size.y+NORTH_APRON+2.1),-0.13,Color("#869987"))
 	slab(floor_inside,0,Color("#abb4af"))
-	slab(Rect2(0,0,7,17),0.006,Color("#c9ae89"))
-	slab(Rect2(0,17,size.x,size.y-17),0.0,Color("#a9aba1"))
+	slab(Rect2(0,0,left_width,depth),0.006,Color("#c9ae89"))
+	slab(Rect2(0,depth,size.x,size.y-depth),0.0,Color("#a9aba1"))
 	slab(Rect2(0,size.y,size.x+6.5,ARRIVAL_ROAD_END-size.y),0.0,Color("#687d80"))
 	slab(Rect2(0,-NORTH_APRON,size.x,NORTH_APRON),0.0,Color("#a9aba1"))
 	slab(Rect2(0,ROAD_TOP,size.x+6.5,-NORTH_APRON-ROAD_TOP),0.0,Color("#687d80"))
 	for x in range(1,int(size.x)+6,3):
 		for z in [-16.65,35.75]:
 			game.box(self,Vector3(1.4,0.012,0.06),Vector3(x,0.053,z),Color("#d6c695"))
-	if variant==2:
+	if compact:
+		waiting_room = Vector2(2.7,5.5)
+		for z in [3.9,7.8]:
+			add_wall(0,z,1.2,0.18)
+			add_wall(3.8,z,left_width-3.8,0.18)
+	elif variant==2:
 		waiting_room = Vector2(3.4,3.0)
 		add_wall(0,5.7,2.1,0.18)
 		add_wall(4.6,5.7,2.4,0.18)
@@ -113,30 +147,33 @@ func build(g: Node3D, layout_index: int) -> void:
 		add_wall(0,10.8,2.1,0.18)
 		add_wall(4.5,10.8,2.5,0.18)
 	var office: Vector2i = Vector2i(1,7) if variant==2 else Vector2i(1,2)
-	sign_at("BUREAU",center(office)+Vector2(1.7,0.2),Color("#324b4c"))
+	sign_at("BUREAU",center(office)+Vector2(1.7,0.75 if compact else 0.2),Color("#324b4c"))
 	sign_at("ATTENTE",waiting_room+Vector2(0.4,0.8),Color("#324b4c"))
 	sign_at("ENTRÉE CLIENTS",portal+Vector2(0,0.45),Color("#fff0cf"))
-	for x in [2.55,4.45]:
-		game.box(self,Vector3(0.18,1.11,0.29),Vector3(x,0.61,16.9),Color("#72948d"))
-	game.box(self,Vector3(1.74,0.026,0.32),Vector3(3.5,0.061,16.96),Color("#768b83"))
-	add_wall(0,0,0.18,17)
-	add_wall(size.x-0.18,0,0.18,17)
-	add_wall(0,16.82,2.5,0.18)
-	add_wall(4.5,16.82,7.9,0.18)
-	add_wall(6.9,0,0.18,7.1)
-	add_wall(6.9,10.0,0.18,7.0)
-	add_wall(0,0,8.55,0.18)
-	add_wall(10.18,0,2.22,0.18)
+	for offset in [-0.95,0.95]:
+		game.box(self,Vector3(0.18,1.11,0.29),Vector3(portal.x+offset,0.61,portal.y),Color("#72948d"))
+	game.box(self,Vector3(1.74,0.026,0.32),Vector3(portal.x,0.061,depth-0.04),Color("#768b83"))
+	var bay_wall_start := first_bay_x-3.10
+	add_wall(0,0,0.18,depth)
+	add_wall(size.x-0.18,0,0.18,depth)
+	add_wall(0,depth-0.18,portal.x-1.0,0.18)
+	add_wall(portal.x+1.0,depth-0.18,bay_wall_start-portal.x-1.0,0.18)
+	var opening_start := 4.8 if compact else 7.1
+	var opening_end := 7.6 if compact else 10.0
+	add_wall(left_width-0.1,0,0.18,opening_start)
+	add_wall(left_width-0.1,opening_end,0.18,depth-opening_end)
+	add_wall(0,0,pedestrian_access.x-0.81,0.18)
+	add_wall(pedestrian_access.x+0.82,0,bay_wall_start-pedestrian_access.x-0.82,0.18)
 	for stripe in range(4):
-		game.box(self,Vector3(0.19,0.012,1.6),Vector3(8.85+stripe*0.34,0.053,-0.40),Color("#e1d9af"))
-	sign_at("ACCÈS PIÉTON",PEDESTRIAN_ACCESS+Vector2(0,-0.63),Color("#fff0cf"))
+		game.box(self,Vector3(0.19,0.012,1.6),Vector3(pedestrian_access.x-0.51+stripe*0.34,0.053,-0.40),Color("#e1d9af"))
+	sign_at("ACCÈS PIÉTON",pedestrian_access+Vector2(0,-0.63),Color("#fff0cf"))
 	for i in range(count):
-		build_bay(i,Vector2(15.5+6*i,8.0))
+		build_bay(i,Vector2(first_bay_x+6*i,6.5 if compact else 8.0))
 		var seat_row := floori(waiting_room.y)+i-(1 if variant==2 else 0)
 		var tile := Vector2i(1,seat_row)
 		seats.append(center(tile)+Vector2(0.23,0))
 		make_station("seat_%d"%i,"Banquette",tile,Color("#759da2"),0.48)
-	for x in [11.5,7.5]: build_arrival_space(x)
+	for x in ([15.5,7.5] if compact else [11.5,7.5]): build_arrival_space(x)
 	build_used_tire_zone()
 	make_station("phone","Téléphone",office,Color("#947760"),0.83,2)
 	make_station("office_chair","Chaise du bureau",office+Vector2i(1,-1),Color("#739a96"),0.55)
@@ -147,7 +184,7 @@ func build(g: Node3D, layout_index: int) -> void:
 	make_station("fresh_oil","Huile neuve",Vector2i(storage_x+2,storage_y),Color("#739f90"))
 	make_station("new_battery","Batteries",Vector2i(storage_x+3,storage_y),Color("#9c81a5"))
 	make_station("coolant","Liquide",Vector2i(storage_x+4,storage_y),Color("#7196a9"))
-	sign_at("RÉSERVE",Vector2(storage_x+2.75,storage_y-0.78),Color("#435d62"))
+	sign_at("RÉSERVE",Vector2(6.65,9.45) if compact else Vector2(storage_x+2.75,storage_y-0.78),Color("#435d62"))
 	make_station("waste_oil","Huile usée",Vector2i(9,16),Color("#aa8755"))
 	make_station("trash","Poubelle",Vector2i(11,16),Color("#596d72"))
 	for i in range(TOOLS.size()):
@@ -167,6 +204,8 @@ func build(g: Node3D, layout_index: int) -> void:
 		for id in TRAVERSEE_STATIONS:
 			move_station(id,TRAVERSEE_STATIONS[id])
 		cart_cell = Vector2i(12,9)
+	elif compact:
+		cart_cell = Vector2i(7,8)
 	parked_cart = trolley_model(self,Vector3(center(cart_cell).x,0.075,center(cart_cell).y))
 	build_selection()
 	intake_car_marker = label_at(self,"",Vector3.ZERO)
@@ -185,6 +224,8 @@ func build(g: Node3D, layout_index: int) -> void:
 	bearing_clips = [bearing_clip(false),bearing_clip(true)]
 
 func make_station(id: String, title: String, tile: Vector2i, color: Color, height := 0.76, span := 1) -> void:
+	if compact:
+		tile = COMPACT_STATIONS.get(id,tile)
 	var root := Node3D.new()
 	add_child(root)
 	stations[id] = {"root":root,"tile":tile,"title":title,"height":height,"span":span,"turn":0}
@@ -263,26 +304,27 @@ func desk_label(root: Node3D, text: String, x: float, height: float, color: Colo
 
 func build_bay(index: int, at: Vector2) -> void:
 	var x := at.x
-	slab(Rect2(x-1.65,0,3.3,17),0.015,Color("#a1af9f"))
-	slab(Rect2(x-1.65,17,3.3,7.9),0.009,Color("#929f9b"))
+	var depth := floor_inside.size.y
+	slab(Rect2(x-1.65,0,3.3,depth),0.015,Color("#a1af9f"))
+	slab(Rect2(x-1.65,depth,3.3,24.9-depth),0.009,Color("#929f9b"))
 	for z in [18.6,20.2,21.8,23.4]:
 		for side in [-1,1]:
 			game.box(self,Vector3(0.055,0.012,0.57),Vector3(x+side*1.52,0.061,z),Color("#dec99a"))
 	build_arrival_space(x)
 	for side in [-1,1]:
 		var rail_x: float = x+side*1.52
-		game.box(self,Vector3(0.07,0.024,16.9),Vector3(rail_x,0.067,8.5),Color("#e5c481"))
-		for end in [1.3,15.5]:
+		game.box(self,Vector3(0.07,0.024,depth-0.1),Vector3(rail_x,0.067,depth/2),Color("#e5c481"))
+		for end in [1.3,depth-1.5]:
 			for stripe in range(3):
 				game.box(self,Vector3(0.34,0.018,0.075),Vector3(rail_x,0.064,end+stripe*0.15),Color("#e3bc71"))
 	var gates: Array[Node3D] = []
-	for z in [0.07,16.93]:
+	for z in [0.07,depth-0.07]:
 		var gate := Node3D.new()
 		add_child(gate)
 		gate.position = Vector3(x,0,z)
 		Neighborhood.fit(gate,Neighborhood.SHUTTER,Vector3(3.04,0.70,0.14))
 		gates.append(gate)
-	for z in [0.0,16.82]:
+	for z in [0.0,depth-0.18]:
 		if index==0 and z>0:
 			build_personnel_door(x-3.10,x-1.62)
 		else:
@@ -290,7 +332,7 @@ func build_bay(index: int, at: Vector2) -> void:
 		add_wall(x+1.62,z,1.38,0.18)
 		if x+3.0+6>size.x: add_wall(x+3.0,z,size.x-x-3.0,0.18)
 	sign_at("↑   SORTIE %d"%(index+1),Vector2(x,0.04),Color("#ffebc0"))
-	sign_at("↑   ENTRÉE %d"%(index+1),Vector2(x,16.92),Color("#ffebc0"))
+	sign_at("↑   ENTRÉE %d"%(index+1),Vector2(x,depth-0.08),Color("#ffebc0"))
 	sign_at("BAIE %02d"%(index+1),at+Vector2(0,3.05),Color("#f9ead0"))
 	var parking := Rect2(x-1.70,-10.45,3.40,5.90)
 	make_parking(parking,"P %02d"%(index+1),false)
@@ -555,7 +597,7 @@ func build_vendor() -> void:
 	van.hide()
 
 func build_personnel_door(left: float, right: float) -> void:
-	var area := SHOP_PERSONNEL_DOOR
+	var area := personnel_door_area
 	add_wall(left,area.position.y,area.position.x-left,area.size.y)
 	add_wall(area.end.x,area.position.y,right-area.end.x,area.size.y)
 	personnel_door = Node3D.new()
@@ -566,10 +608,10 @@ func build_personnel_door(left: float, right: float) -> void:
 	game.box(personnel_door,Vector3(0.52,0.23,0.105),Vector3(width/2,0.54,0),Color("#a9c3bc"))
 	game.box(personnel_door,Vector3(0.12,0.04,0.16),Vector3(width-0.15,0.34,0),Color("#dfbf79"))
 	game.box(self,Vector3(width,0.022,0.36),Vector3(area.get_center().x,0.058,area.get_center().y),Color("#728e85"))
-	sign_at("PORTE PIÉTONNE",Vector2(area.get_center().x,17.56),Color("#fff0cf"))
+	sign_at("PORTE PIÉTONNE",Vector2(area.get_center().x,floor_inside.end.y+0.56),Color("#fff0cf"))
 
 func animate_personnel_door(player: Vector2, dt: float, partner := Vector2.INF) -> void:
-	var approach := SHOP_PERSONNEL_DOOR.grow_individual(0.10,0.95,0.10,0.95)
+	var approach := personnel_door_area.grow_individual(0.10,0.95,0.10,0.95)
 	var near := approach.has_point(player) or approach.has_point(partner)
 	personnel_door.rotation.y = move_toward(personnel_door.rotation.y,-PI/2 if near else 0.0,dt*8.0)
 
@@ -621,10 +663,15 @@ func cell(p: Vector2) -> Vector2i:
 func playable_area() -> Rect2:
 	return Rect2(0,-NORTH_APRON,size.x,size.y+NORTH_APRON)
 
+func customer_entrance_tile() -> Vector2i:
+	return cell(portal+Vector2.DOWN*0.6)
+
 func office_tiles() -> Rect2i:
+	if compact: return Rect2i(0,0,5,3)
 	return Rect2i(0,6,7,5) if variant==2 else Rect2i(0,0,7,5)
 
 func waiting_area() -> Rect2:
+	if compact: return Rect2(0.18,4.08,4.72,3.72)
 	return Rect2(0.18,0.18,6.72,5.52) if variant==2 else Rect2(0.18,5.78,6.72,5.02)
 
 func amenity_active(id: String) -> bool:
@@ -653,12 +700,15 @@ func placement_ok(tile: Vector2i, id: String) -> bool:
 	if blocked_tile(tile) or cells.has(tile): return false
 	if id=="used_tire" and used_tire_zone.has_point(tile): return true
 	if p.y<0: return false
-	if p.y>=17 and p.x>=11: return false
-	if id=="reception": return Rect2(2.0,11.0,3.0,3.0).has_point(p)
-	if id.begins_with("seat_") and not Rect2(0.55,waiting_room.y-1.45,5.95,4.75).has_point(p): return false
+	if p.y>=floor_inside.end.y and p.x>=bays[0].at.x-4.5: return false
+	if id=="reception":
+		var reception_area := Rect2(1.0,8.0,3.0,3.0) if compact else Rect2(2.0,11.0,3.0,3.0)
+		return reception_area.has_point(p)
+	var seat_area := waiting_area() if compact else Rect2(0.55,waiting_room.y-1.45,5.95,4.75)
+	if id.begins_with("seat_") and not seat_area.has_point(p): return false
 	if p.distance_to(desk_side)<0.8 or p.distance_to(queue_head)<0.75 or p.distance_to(checkout_head)<0.75: return false
-	if id!="reception" and p.x>2.4 and p.x<4.5 and p.y>12: return false
-	if not id.begins_with("seat_") and p.x>2.0 and p.x<5.7 and p.y>=waiting_room.y-0.7 and p.y<=waiting_room.y+3.1: return false
+	if p.x>portal.x-1.1 and p.x<portal.x+1.0 and p.y>floor_inside.end.y-(4.0 if compact else 5.0): return false
+	if not id.begins_with("seat_") and p.x>2.0 and p.x<left_width-1.3 and p.y>=waiting_room.y-0.7 and p.y<=waiting_room.y+3.1: return false
 	for bay in bays:
 		if absf(p.x-bay.at.x)<2.12: return false
 	return not van.visible or not Rect2(5.7,18.4,3.65,2.0).has_point(p)
@@ -702,14 +752,14 @@ func behind_reception(point: Vector2, from: Vector2) -> bool:
 func bay_waiting_places() -> Array[Vector2]:
 	var places: Array[Vector2] = []
 	for z in [0.12,1.12]:
-		for x in [2.62,3.82,5.02]:
+		for x in ([2.42,3.37,4.30] if compact else [2.62,3.82,5.02]):
 			var point := Vector2(x,waiting_room.y+z)
 			if clear_at(point,0.16): places.append(point)
 	if places.is_empty(): places.append(waiting_room)
 	return places
 
 func parked_customer_point(slot: int) -> Vector2:
-	var point := Vector2(5.75,waiting_room.y+0.12+slot*0.9)
+	var point := Vector2(left_width-1.25,waiting_room.y+0.12+slot*0.9)
 	if clear_at(point,0.16): return point
 	var places := bay_waiting_places()
 	return places[slot%places.size()]
@@ -770,8 +820,8 @@ func can_see(from: Vector2, target: Vector2, allow_source := false) -> bool:
 
 func blocks_traffic(tile: Vector2i) -> bool:
 	var footprint := Rect2(Vector2(tile),Vector2.ONE)
-	if footprint.intersects(Rect2(8.55,-2.2,1.63,3.19)): return true
-	if footprint.intersects(SHOP_PERSONNEL_DOOR.grow_individual(0.0,1.1,0.0,1.1)): return true
+	if footprint.intersects(Rect2(pedestrian_access.x-0.81,-2.2,1.63,3.19)): return true
+	if footprint.intersects(personnel_door_area.grow_individual(0.0,1.1,0.0,1.1)): return true
 	for bay in bays:
 		var lane := Rect2(Vector2(bay.at.x-CAR_HALF.x,-NORTH_APRON),Vector2(CAR_HALF.x*2,size.y+NORTH_APRON))
 		if lane.intersects(footprint) or footprint.intersects(bay.parking.grow(0.55)): return true

@@ -25,6 +25,11 @@ function lobby(hash = "") {
 }
 
 const page = lobby("#multiplayer");
+const mapOptions = [...fs.readFileSync(`${__dirname}/web/index.html`, "utf8")
+  .matchAll(/name="layout" value="(\d+)"( checked)?/g)];
+assert.deepEqual(mapOptions.map(([, id]) => Number(id)), [3, 0, 1, 2]);
+assert.equal(mapOptions[0][2], " checked", "The compact map must be selected by default");
+assert.equal(JSON.parse(page.bridge.startInfo()).layout, 3);
 assert.equal(page.elements.multiplayer.hidden, false, "The native link must open multiplayer directly");
 assert.equal(page.elements.home.hidden, true);
 page.bridge.setDisplay("fast", true);

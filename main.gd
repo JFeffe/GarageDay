@@ -4,6 +4,7 @@ const SYMBOL_FONT := preload("res://assets/fonts/NotoSansSymbols2-Regular.ttf")
 const HostSave := preload("res://host_save.gd")
 const Coop := preload("res://workshop_coop.gd")
 const GameMenu := preload("res://game_menu.gd")
+const Map := preload("res://workshop_map.gd")
 const BINDINGS := {
 	"pause_game": [KEY_ESCAPE, JOY_BUTTON_START],
 	"reset": [KEY_F9, JOY_BUTTON_BACK],
@@ -64,14 +65,14 @@ func _ready() -> void:
 		if not InputMap.action_has_event(action,button):
 			InputMap.action_add_event(action,button)
 	player_visual.build(self,avatar)
-	var initial_layout := 0
+	var initial_layout := Map.COMPACT_LAYOUT
 	var checkpoint := ""
 	if OS.has_feature("web"):
 		web_room = JavaScriptBridge.get_interface("window").parent.GarageDay
 		if web_room!=null:
 			var launch: Variant = JSON.parse_string(web_room.startInfo())
 			if launch is Dictionary:
-				initial_layout = clampi(int(launch.get("layout",0)),0,2)
+				initial_layout = clampi(int(launch.get("layout",Map.COMPACT_LAYOUT)),0,Map.LAYOUTS.size()-1)
 				hosting = launch.get("mode")=="host"
 				checkpoint = str(launch.get("save",""))
 				apply_graphics(str(launch.get("quality","balanced")),bool(launch.get("showFps",false)))

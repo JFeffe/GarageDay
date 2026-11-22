@@ -83,7 +83,7 @@ var road_customer := -1
 var coop
 var guest_input: Array = []
 
-func setup(g: Node3D, initial_layout := 0) -> void:
+func setup(g: Node3D, initial_layout := Map.COMPACT_LAYOUT) -> void:
 	game = g
 	setup_ui()
 	build(initial_layout)
@@ -152,7 +152,8 @@ func make_panel(width: float) -> RichTextLabel:
 
 func show_layouts() -> void:
 	menu.open("layout","Choisir ton garage","Une partie de dix jours",
-		Map.LAYOUTS,"Flèches / Croix directionnelle   ·   A / F choisir   ·   B / Q retour")
+		Map.LAYOUT_ORDER.map(func(id: int) -> Array: return Map.LAYOUTS[id]),
+		"Flèches / Croix directionnelle   ·   A / F choisir   ·   B / Q retour")
 
 func show_vendor(message := "", focused := 0) -> void:
 	if run.mode!="open": return
@@ -264,7 +265,7 @@ func menu_chosen(index: int) -> void:
 		purchase_vendor_offer(index)
 		return
 	menu.hide()
-	if kind=="layout": build(index)
+	if kind=="layout": build(Map.LAYOUT_ORDER[index])
 	elif kind=="restart" and index==1: show_layouts()
 	elif kind=="summary" and run.mode in ["won","lost"]: show_layouts()
 	elif kind=="parts" and Catalog.SHELVES.has(parts_shelf) and held=="" and not pulling_cart:
@@ -301,7 +302,7 @@ func build(index: int) -> void:
 	game.add_child(site)
 	site.build(game,layout)
 	run = Day.new()
-	run.intro_brakes = index==0
+	run.intro_brakes = index==0 or index==Map.COMPACT_LAYOUT
 	day_setup.clear()
 	visitors.clear()
 	queue_path.clear()
@@ -326,7 +327,7 @@ func build(index: int) -> void:
 	cart_count = 0
 	cart_turn = 0
 	notice_time = 0
-	player = Vector2(3.5,11.5)
+	player = site.desk_side if site.compact else Vector2(3.5,11.5)
 	facing = Vector2.UP
 	velocity = Vector2.ZERO
 	zoom = 0
@@ -1107,7 +1108,7 @@ func restore_day_setup() -> void:
 	day_setup.clear()
 
 func keep_player_clear() -> void:
-	var entrance := Vector2i(3,17)
+	var entrance: Vector2i = site.customer_entrance_tile()
 	if site.clear_at(player) and reachable_tiles(player,true).has(entrance): return
 	var nearest := INF
 	var safe := player
@@ -1240,7 +1241,7 @@ func walk_segment_clear(from: Vector2, to: Vector2) -> bool:
 	return true
 
 func reachable_tiles(origin: Vector2, stop_at_entrance: bool) -> Dictionary:
-	var entrance := Vector2i(3,17)
+	var entrance: Vector2i = site.customer_entrance_tile()
 	var visited := {}
 	var queue: Array[Vector2i] = []
 	var start: Vector2i = site.cell(origin)
@@ -1265,7 +1266,7 @@ func reachable_tiles(origin: Vector2, stop_at_entrance: bool) -> Dictionary:
 
 func layout_route_ok(tile: Vector2i, furniture := false) -> bool:
 	if site.cells.has(tile): return true
-	var entrance := Vector2i(3,17)
+	var entrance: Vector2i = site.customer_entrance_tile()
 	var footprint: Array[Vector2i] = [tile]
 	if furniture: footprint = site.station_tiles(relocating,tile,relocating_turn)
 	for occupied in footprint: site.cells[occupied] = {"kind":"preview"}
@@ -1279,7 +1280,7 @@ func layout_route_ok(tile: Vector2i, furniture := false) -> bool:
 	return ok
 
 func furniture_routes_ok(visited: Dictionary, moved := "", new_tile := Vector2i.ZERO, new_turn := 0) -> bool:
-	if not visited.has(Vector2i(3,17)) or not visited.has(site.cell(Map.PEDESTRIAN_ACCESS)): return false
+	if not visited.has(site.customer_entrance_tile()) or not visited.has(site.cell(site.pedestrian_access)): return false
 	var counter: Vector2 = site.station_point("reception")
 	var reception_turn: int = site.stations.reception.turn
 	if moved=="reception":
@@ -1388,7 +1389,7 @@ func driving_axis(value: float, response: float) -> float:
 	return signf(value)*pow(magnitude,response)
 
 func driving_guide(bay: Dictionary, point: Vector2, yaw: float, destination: Vector2) -> float:
-	var door_z := 16.93 if bay.status=="intake" else 0.07
+	var door_z: float = bay.gates[1 if bay.status=="intake" else 0].position.z
 	var range_z := minf(absf(point.y-door_z),absf(point.y-destination.y))
 	var off_axis := absf(point.x-destination.x)
 	var heading := absf(wrapf(yaw,-PI/2,PI/2))
@@ -1506,7 +1507,7 @@ func waiting_by_parking(index: int) -> Vector2:
 				bay.wait_slot = slot
 				return point
 	bay.erase("wait_slot")
-	return Map.PEDESTRIAN_ACCESS
+	return site.pedestrian_access
 
 func parking_ready(bay: Dictionary, margin := 0.0) -> bool:
 	var slot: int = bay.exit_slot if bay.has("exit_slot") else nearest_exit_slot(bay)
@@ -1694,8 +1695,8 @@ func begin_departure(bay: Dictionary) -> void:
 func passenger_departure(id: int, departure: Dictionary, dt: float) -> void:
 	var bay: Dictionary = departure.bay
 	if departure.stage=="walk":
-		if not departure.outdoors and visitor_at(id,Map.PEDESTRIAN_ACCESS): departure.outdoors = true
-		var goal: Vector2 = departure.door if departure.outdoors else Map.PEDESTRIAN_ACCESS
+		if not departure.outdoors and visitor_at(id,site.pedestrian_access): departure.outdoors = true
+		var goal: Vector2 = departure.door if departure.outdoors else site.pedestrian_access
 		visitor(bay.order,goal,false,dt)
 		if departure.outdoors and visitor_at(id,goal):
 			departure.stage = "board"
@@ -1811,7 +1812,7 @@ func reception_queue_point(index: int, path: Array[Vector2]) -> Vector2:
 	if index==0: return head
 	if site.stations.reception.turn==0:
 		var point := head+Vector2(0,0.83*index)
-		if point.y>=16.5: point.x = site.portal.x
+		if point.y>=site.floor_inside.end.y-0.5: point.x = site.portal.x
 		return point
 	var remaining := 0.83*index
 	for point in path:

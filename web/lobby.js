@@ -13,7 +13,8 @@ const captureFps = 30;
 let invitation = new URLSearchParams(location.hash.slice(1)).get("join");
 const validRoom = id => /^gd-[0-9a-f]{32}$/.test(id ?? "");
 const openInput = [0, 0, 0, 0, 0, 0, 0];
-let launch = { mode: "solo", layout: 0, save: "" };
+const defaultLayout = 3;
+let launch = { mode: "solo", layout: defaultLayout, save: "" };
 let peer, channel, call, stream, timeout;
 let stopCapturing;
 let gameSound;
@@ -148,7 +149,7 @@ function updateDisplay() {
   if (elements.fps.hidden) elements.fps.textContent = "";
 }
 
-function openGame(mode, layout = 0, save = "") {
+function openGame(mode, layout = defaultLayout, save = "") {
   launch = { mode, layout, save };
   ready = paused = false;
   gameControls = undefined;
@@ -190,8 +191,8 @@ function continueGame() {
   } else {
     const solo = loadSave("solo");
     const hosted = loadSave("host");
-    if (solo) openGame("solo", 0, solo);
-    else if (hosted) hostGame(0, hosted);
+    if (solo) openGame("solo", defaultLayout, solo);
+    else if (hosted) hostGame(defaultLayout, hosted);
   }
 }
 
@@ -483,7 +484,7 @@ elements.back.addEventListener("click", () => {
 });
 elements.resume.addEventListener("click", continueGame);
 elements.host.addEventListener("click", () => openPicker("host"));
-elements["resume-host"].addEventListener("click", () => hostGame(0, loadSave("host")));
+elements["resume-host"].addEventListener("click", () => hostGame(defaultLayout, loadSave("host")));
 elements["join-form"].addEventListener("submit", event => {
   event.preventDefault();
   const room = new URL(elements["join-link"].value).hash.slice(1);

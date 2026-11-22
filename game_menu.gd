@@ -9,7 +9,8 @@ const QUALITY_DETAILS := ["Résolution 3D réduite et ombres désactivées.",
 	"Image plus nette en solo et ombres simplifiées.",
 	"Résolution maximale, ombres détaillées et contours lissés en solo."]
 const GARAGE_IMAGES := [preload("res://web/images/traversee.webp"),
-	preload("res://web/images/tandem.webp"),preload("res://web/images/trois-ponts.webp")]
+	preload("res://web/images/tandem.webp"),preload("res://web/images/trois-ponts.webp"),
+	preload("res://web/images/petit-atelier.webp")]
 const HERO := preload("res://web/images/atelier.webp")
 
 var game: Node3D
@@ -226,7 +227,7 @@ func show_layouts() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",18)
 	content.add_child(row)
-	for index in range(3):
+	for index in game.workshop.Map.LAYOUT_ORDER:
 		var card := VBoxContainer.new()
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.size_flags_stretch_ratio = 1
@@ -272,8 +273,8 @@ func show_multiplayer() -> void:
 	button(content,"Retour",show_home)
 
 func show_notes() -> void:
-	page("notes","Notes de mise à jour","0.1.1 · Accueil local et pause")
-	content.add_child(label("• Accueil local avec reprise de partie et choix des trois garages.\n• Pause avec Start / Échap, options et retour à l’accueil.\n• Réglages graphiques et compteur d’images par seconde sauvegardés.\n• Sauvegarde locale en atelier libre et avant le service.\n• Accès au multijoueur Web depuis l’accueil.",20,MINT))
+	page("notes","Notes de mise à jour","0.1.6 · Le Petit Atelier")
+	content.add_child(label("• Un quatrième garage avec une baie, un atelier réduit et des salles plus petites.\n• Le Petit Atelier apparaît en premier dans le choix du garage.",20,MINT))
 	button(content,"Retour",show_home)
 
 func show_message(message: String) -> void:

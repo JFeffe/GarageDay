@@ -92,20 +92,22 @@ class PlanArt extends Control:
 	var variant := 0
 
 	func _draw() -> void:
-		var left := size.x*0.38
-		draw_rect(Rect2(Vector2.ZERO,size),Color("#719299"))
-		draw_rect(Rect2(0,0,left,size.y),Color("#dec5a1"))
+		var plan := Rect2(Vector2.ZERO,size).grow(-5.0) if variant==3 else Rect2(Vector2.ZERO,size)
+		var left := plan.size.x*(0.28 if variant==3 else 0.38)
+		draw_set_transform(plan.position)
+		draw_rect(Rect2(Vector2.ZERO,plan.size),Color("#719299"))
+		draw_rect(Rect2(0,0,left,plan.size.y),Color("#dec5a1"))
 		var wait_y := 0.09 if variant==2 else 0.40
-		draw_rect(Rect2(6,wait_y*size.y,left-12,size.y*0.22),Color("#80aaa2"))
+		draw_rect(Rect2(6,wait_y*plan.size.y,left-12,plan.size.y*0.22),Color("#80aaa2"))
 		for boundary in [0.33,0.69]:
-			draw_line(Vector2(0,size.y*boundary),Vector2(left*0.34,size.y*boundary),Color("#f5e7cc"),2)
-			draw_line(Vector2(left*0.59,size.y*boundary),Vector2(left,size.y*boundary),Color("#f5e7cc"),2)
+			draw_line(Vector2(0,plan.size.y*boundary),Vector2(left*0.34,plan.size.y*boundary),Color("#f5e7cc"),2)
+			draw_line(Vector2(left*0.59,plan.size.y*boundary),Vector2(left,plan.size.y*boundary),Color("#f5e7cc"),2)
 		for i in range(bays):
-			var width := (size.x-left)/bays
-			var lane := Rect2(left+i*width+width*0.22,3,width*0.56,size.y-6)
+			var width := (plan.size.x-left)/bays
+			var lane := Rect2(left+i*width+width*0.22,3,width*0.56,plan.size.y-6)
 			draw_rect(lane,Color("#9bb9b9"))
 			draw_rect(Rect2(lane.position+Vector2(lane.size.x*0.23,7),Vector2(lane.size.x*0.54,lane.size.y-14)),Color("#42646c"))
-		draw_line(Vector2(1,size.y-2),Vector2(left,size.y-2),Color("#f5e7cc"),2)
+		draw_line(Vector2(1,plan.size.y-2),Vector2(left,plan.size.y-2),Color("#f5e7cc"),2)
 
 signal chosen(index: int)
 signal dismissed

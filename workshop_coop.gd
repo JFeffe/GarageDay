@@ -46,7 +46,8 @@ func setup_guest(w) -> void:
 	motor.volume_db = w.engine.volume_db
 	motor.playback_type = w.engine.playback_type
 	avatar.add_child(motor)
-	guest = {"player":Vector2(4.5,11.5),"facing":Vector2.UP,"velocity":Vector2.ZERO,
+	var spawn: Vector2 = w.site.desk_side+Vector2.RIGHT*1.5 if w.site.compact else Vector2(4.5,11.5)
+	guest = {"player":spawn,"facing":Vector2.UP,"velocity":Vector2.ZERO,
 		"held":"","held_origin":-1,"held_turn":-1,"pulling_cart":false,
 		"tool_holder":holder,"item_prop":null,"action":{},"progress":0.0,"repair_pose":ActorRepairPose.new(),
 		"driven_bay":-1,"drive_speed":0.0,"drive_steering":0.0,"engine":motor}

@@ -262,6 +262,13 @@ static func tire_rack(root: Node3D) -> void:
 		tire.scale = Vector3.ONE*0.73
 
 static func dress_shop(site: Node3D) -> void:
+	if site.compact:
+		for z in range(1,int(site.floor_inside.end.y)):
+			Miniature.bevel_box(site,Vector3(4.66,0.005,0.022),Vector3(2.5,0.065,z),Color("#ae8970"),0.001)
+		add_light(site,Vector3(8.1,2.68,6.25),Color("#d8eafa"),0.51,6.0)
+		add_light(site,Vector3(14.4,2.68,7.6),Color("#d8eafa"),0.56,6.5)
+		add_light(site,Vector3(2.5,2.48,9.3),Color("#ffe0a9"),0.64,5.5)
+		return
 	for z in range(1,17):
 		Miniature.bevel_box(site,Vector3(6.67,0.005,0.022),Vector3(3.48,0.065,z),Color("#ae8970"),0.001)
 	for z in [1.25,4.75,11.0,15.3]:
