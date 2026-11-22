@@ -117,6 +117,8 @@ func page(id: String, title: String, subtitle := "") -> void:
 	first_button = null
 	content.add_child(label(title,40,CREAM))
 	if subtitle!="": content.add_child(label(subtitle,17,MINT))
+	if game.endurance_active and (id in ["pause","leave_host"] or (id=="options" and options_origin=="pause")):
+		content.add_child(label(game.endurance_hud.clock_line(),18,CREAM))
 	notice = label("",16,Color("#e5bd78"))
 	content.add_child(notice)
 
@@ -195,7 +197,7 @@ func resume_game() -> void:
 	pause_button.position = Vector2(14,12) if endurance else Vector2(-115,12)
 	pause_button.size = Vector2(100,42) if endurance else Vector2(230,42)
 	fps.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT if endurance else Control.PRESET_CENTER_TOP)
-	fps.position = Vector2(128,22) if endurance else Vector2(-30,60)
+	fps.position = Vector2(493,22) if endurance else Vector2(-30,60)
 	pause_button.show()
 	game.show_activity_hud(true)
 	# Resume on the next frame so accepting the menu cannot interact with the garage.
@@ -300,8 +302,8 @@ func show_multiplayer() -> void:
 	button(content,"Retour",show_home)
 
 func show_notes() -> void:
-	page("notes","Notes de mise à jour","0.1.10 · Contrôle course")
-	content.add_child(label("Prépare les arrêts et donne le feu vert depuis le banc de contrôle au fond du garage. L’interface des 12 h laisse les zones d’intervention dégagées.",20,MINT))
+	page("notes","Notes de mise à jour","0.1.11 · Le muret des stands")
+	content.add_child(label("Le contrôle est à l’extérieur du garage, avec les deux GT côte à côte et le chrono toujours visible. LT / RT règle la vitesse en piste. Une jauge montre la progression des interventions.",20,MINT))
 	button(content,"Retour",show_home)
 
 func show_message(message: String) -> void:

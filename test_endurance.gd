@@ -146,6 +146,13 @@ func press_pad(button_index: int) -> void:
 	Input.parse_input_event(event)
 	await process_frame
 
+func move_axis(axis: int, value: float) -> void:
+	var event := InputEventJoypadMotion.new()
+	event.axis = axis
+	event.axis_value = value
+	Input.parse_input_event(event)
+	await process_frame
+
 func check_local_menu() -> void:
 	var game = load("res://main.tscn").instantiate()
 	game.local_storage_enabled = false
@@ -172,6 +179,17 @@ func check_local_menu() -> void:
 		await press_pad(JOY_BUTTON_A)
 		await frames()
 		check(game.endurance.phase==Race.Phase.RACE,"A doit donner le départ depuis le briefing.")
+		check(game.endurance.rate()==24.0,"Le rythme initial en piste doit être ×24.")
+		await move_axis(JOY_AXIS_TRIGGER_RIGHT,0.8)
+		check(game.endurance.rate()==48.0,"RT doit accélérer le temps à ×48.")
+		await move_axis(JOY_AXIS_TRIGGER_RIGHT,0.0)
+		await move_axis(JOY_AXIS_TRIGGER_LEFT,0.65)
+		await move_axis(JOY_AXIS_TRIGGER_LEFT,0.95)
+		check(game.endurance.rate()==24.0,"Un maintien de LT doit ralentir d’un seul cran.")
+		await move_axis(JOY_AXIS_TRIGGER_LEFT,0.0)
+		await move_axis(JOY_AXIS_TRIGGER_LEFT,0.9)
+		await move_axis(JOY_AXIS_TRIGGER_LEFT,0.0)
+		check(game.endurance.rate()==12.0,"Une deuxième pression de LT doit passer à ×12.")
 		await press_pad(JOY_BUTTON_Y)
 		hud.open_plan(0)
 		check(not hud.control_panel.visible and not hud.planner.visible,
@@ -179,11 +197,26 @@ func check_local_menu() -> void:
 		var worker: Dictionary = game.endurance_crew.workers[0]
 		var spawn: Vector2 = worker.point
 		worker.point = game.endurance_stands.CONTROL_POINT
+		check(worker.point.y>-1.22 and game.endurance_stands.walkable(worker.point,game.endurance),
+			"Le poste de contrôle doit être accessible à l’extérieur du garage.")
 		await press_pad(JOY_BUTTON_Y)
 		check(hud.control_panel.visible and not hud.left_panel.visible,"Y doit ouvrir le panneau de gauche au poste de contrôle.")
+		check(hud.clock_panel.visible and hud.service_details[0].is_visible_in_tree() and hud.service_details[1].is_visible_in_tree(),
+			"Les deux GT et le chrono doivent rester visibles au poste.")
+		await move_axis(JOY_AXIS_LEFT_X,0.75)
+		await move_axis(JOY_AXIS_LEFT_X,0.0)
+		check(hud.selected_car==1,"Le stick gauche doit sélectionner la n° 81 au contrôle.")
+		await press_pad(JOY_BUTTON_DPAD_LEFT)
+		check(hud.selected_car==0,"La croix doit sélectionner la n° 27 au contrôle.")
+		check(game.endurance.rate(true)==Race.PIT_RATE,"Le poste doit plafonner la progression du temps.")
 		await press_pad(JOY_BUTTON_A)
 		check(hud.planner.visible and hud.planner_index==0 and not game.endurance.cars[0].called,
 			"Y puis A doit ouvrir le plan d’arrêt et attendre la confirmation.")
+		check(hud.clock_panel.visible and hud.service_details[1].is_visible_in_tree(),
+			"Le chrono et les deux voitures doivent rester visibles pendant la planification.")
+		var previous_mode: int = hud.draft.fuel
+		await press_pad(JOY_BUTTON_DPAD_RIGHT)
+		check(hud.draft.fuel!=previous_mode,"Droite doit modifier le mode de l’intervention sélectionnée.")
 		await press_pad(JOY_BUTTON_B)
 		check(hud.control_panel.visible and not hud.planner.visible and not game.endurance.cars[0].called,
 			"Annuler un plan doit restaurer le contrôle sans appeler la GT.")
@@ -217,21 +250,25 @@ func check_local_menu() -> void:
 		crew.tick(0.016,Race.PIT_RATE,Vector2.ZERO,false,guest,true)
 		hud.guest_input(guest)
 		check(hud.control_owner==-1,"X ne doit pas ouvrir le contrôle à distance pour l’invité.")
+		guest[8] = 32
+		hud.guest_input(guest)
+		check(game.endurance.rate()==24.0,"RT côté invité doit transmettre la demande de vitesse.")
 		crew.workers[1].point = crew.stands.CONTROL_POINT
+		guest[8] = 2
 		hud.guest_input(guest)
 		check(hud.control_owner==1 and hud.field_input(),
 			"L’invité ouvre le contrôle avec X à proximité du banc pendant que l’hôte reste libre.")
 		guest[8] = 4
 		hud.guest_input(guest)
 		check(hud.planner.visible and hud.planner_index==1,"A ouvre le plan de la n° 81 à l’invité.")
-		guest[1] = -1.0
+		guest[2] = -1.0
 		guest[8] = 0
 		hud.guest_input(guest)
-		guest[1] = 0.0
+		guest[2] = 0.0
 		hud.guest_input(guest)
-		guest[1] = -1.0
+		guest[2] = -1.0
 		hud.guest_input(guest)
-		guest[1] = 0.0
+		guest[2] = 0.0
 		guest[8] = 4
 		hud.guest_input(guest)
 		check(game.endurance.cars[1].called and not game.endurance.cars[0].called,"A doit confirmer le plan de l’invité.")
@@ -243,6 +280,8 @@ func check_local_menu() -> void:
 		var elapsed: float = game.endurance.elapsed
 		await create_timer(0.15).timeout
 		check(paused and game.endurance.elapsed==elapsed and not hud.visible,"La pause doit figer la course et masquer son interface.")
+		check(game.game_menu.content.find_children("*","Label",true,false).any(
+			func(row: Label) -> bool: return row.text==hud.clock_line()),"Le menu de pause doit conserver le chrono à l’écran.")
 		game.game_menu.return_home()
 		check(game.endurance_in_progress(),"La course doit rester disponible après le retour à l’accueil.")
 		game.start_local_game(0)
@@ -272,13 +311,16 @@ func check_world_tools(game: Node3D) -> void:
 	crew.move_worker(0,0.016,Race.PIT_RATE,Vector2.ZERO,true,Vector2.LEFT)
 	var hud = game.endurance_hud
 	hud.refresh()
+	hud.update_feedback(game.camera)
 	check(crew.workers[0].target.get("action")=="nozzle" and crew.workers[0].outline.visible
-		and hud.footer.text.contains("%"),"L’intervention garde son repère et affiche la progression en bas.")
+		and hud.feedback[0].visible and hud.feedback[0].amount>0.0,"L’intervention affiche une jauge au-dessus du repère.")
 	try_station(crew,"control")
 	check(hud.control_panel.visible and hud.service_buttons[2].disabled,"Le feu vert doit rester bloqué si des actions sont en attente.")
 	hud.close_control()
 	try_station(crew,"nozzle")
+	hud.update_feedback(game.camera)
 	check(crew.workers[0].held=="nozzle","Le pistolet doit se prendre à la pompe.")
+	check(hud.feedback[0].visible and hud.feedback[0].outcome=="✓","Une action réussie doit afficher une coche.")
 	try_station(crew,"fuel")
 	check(car.jobs.has("fuel") and crew.workers[0].held=="","Le joueur doit brancher le pistolet sur la GT.")
 	var fill_duration: float = car.jobs.get("fuel",{}).get("left",0.0)

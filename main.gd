@@ -219,7 +219,9 @@ func control_web_game(args: Array) -> void:
 	match args[0]:
 		"pause":
 			if hosting: return
-			if args[1]: store_checkpoint()
+			if args[1]:
+				store_checkpoint()
+				if endurance_active: web_room.reportRacePause(endurance_hud.clock_line())
 			get_tree().paused = bool(args[1])
 			if not args[1] and game_menu!=null: game_menu.resume_game()
 		"graphics":
@@ -275,16 +277,15 @@ func tick_endurance(dt: float) -> void:
 	var phase := endurance.phase
 	var guest: Array = workshop.guest_input if hosting else []
 	var guest_can_work := endurance_hud.guest_input(guest)
-	var clock_rate := EnduranceRace.PIT_RATE if endurance_hud.control_owner>=0 else endurance.rate()
+	var clock_rate := endurance.rate(endurance_hud.control_owner>=0)
 	endurance.advance(dt*clock_rate)
 	endurance_stands.update_cars(endurance,dt)
 	var field_input := endurance_hud.field_input()
 	var walk: Vector2 = workshop.movement_input() if field_input else Vector2.ZERO
 	var aim: Vector2 = workshop.aiming_input() if field_input else Vector2.ZERO
 	endurance_crew.tick(dt,clock_rate,walk,field_input and Input.is_action_pressed("use_item"),guest,guest_can_work,aim)
-	if Input.is_action_just_pressed("zoom_in"): endurance_stands.change_zoom(1)
-	if Input.is_action_just_pressed("zoom_out"): endurance_stands.change_zoom(-1)
 	frame_endurance(minf(dt*7.0,1.0))
+	endurance_hud.update_feedback(camera)
 	endurance_refresh += dt
 	if endurance_refresh>=0.10 or phase!=endurance.phase:
 		endurance_refresh = 0.0

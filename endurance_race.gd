@@ -7,7 +7,7 @@ enum Mode { SKIP, MANUAL, AUTO }
 const DURATION := 12 * 3600.0
 const ENTRY_TIME := 24.0
 const EXIT_TIME := 20.0
-const BASE_RATE := 24.0
+const TRACK_RATES := [12.0,24.0,48.0]
 const PIT_RATE := 5.0
 const PACE_NAMES := ["Économie", "Normal", "Attaque"]
 const SERVICES := ["fuel", "tires", "driver", "repair"]
@@ -30,7 +30,7 @@ const CARS := [
 var phase := Phase.GRID
 var elapsed := 0.0
 var fraction := 0.0
-var speed_up := false
+var speed_step := 1
 var cars: Array[Dictionary] = []
 var radio: Array[String] = []
 var random := RandomNumberGenerator.new()
@@ -43,7 +43,7 @@ func setup(seed_value: int) -> void:
 	phase = Phase.GRID
 	elapsed = 0.0
 	fraction = 0.0
-	speed_up = false
+	speed_step = 1
 	cars.clear()
 	radio.clear()
 	jack_owners = [-1,-1]
@@ -75,15 +75,23 @@ func clock() -> String:
 	var minutes := 8 * 60 + floori(elapsed / 60.0)
 	return "%02d:%02d" % [floori(minutes / 60.0), minutes % 60]
 
+static func race_time(seconds: float) -> String:
+	var whole := maxi(0,floori(seconds))
+	return "%02d:%02d:%02d" % [floori(whole/3600.0),floori(whole/60.0)%60,whole%60]
+
 static func time_left(seconds: float) -> String:
 	var whole := maxi(0, ceili(seconds))
 	return "%02d:%02d" % [floori(whole / 60.0), whole % 60]
 
-func rate() -> float:
+func change_speed(step: int) -> void:
+	if phase==Phase.RACE: speed_step = clampi(speed_step+step,0,TRACK_RATES.size()-1)
+
+func rate(at_desk := false) -> float:
+	if at_desk: return PIT_RATE
 	for car in cars.slice(0,2):
 		if car.state in [State.BOX, State.GARAGE, State.QUEUE, State.ENTRY]: return PIT_RATE
 		if car.state==State.TRACK and car.called and seconds_to_line(car)<21.0: return PIT_RATE
-	return BASE_RATE * (2.0 if speed_up else 1.0)
+	return TRACK_RATES[speed_step]
 
 func advance(seconds: float) -> void:
 	if phase!=Phase.RACE: return

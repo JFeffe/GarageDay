@@ -75,6 +75,11 @@ window.GarageDay = {
   reportFps(fps) {
     elements.fps.textContent = `${fps} i/s`;
   },
+  reportRacePause(clock) {
+    if (launch.mode === "solo" && launch.activity === "endurance") {
+      elements["paused-race-clock"].textContent = `Course en pause · ${clock}`;
+    }
+  },
   guestInput() {
     const online = !!channel?.open && launch.mode === "host";
     const recent = online && performance.now() - lastInputAt < 600;
@@ -126,6 +131,7 @@ function showScreen(next, focus = true, message = "") {
     elements[name].hidden = name !== next;
   }
   screen = next;
+  elements["paused-race-clock"].hidden = !(paused && launch.activity === "endurance");
   elements.back.hidden = next === "home";
   elements.resume.hidden = !(paused || loadSave("solo") || loadSave("host"));
   elements["resume-host"].hidden = !loadSave("host");
@@ -153,6 +159,7 @@ function updateDisplay() {
 function openGame(mode, layout = defaultLayout, save = "", activity = "workshop") {
   launch = { mode, layout, save, activity };
   ready = paused = false;
+  elements["paused-race-clock"].textContent = "";
   gameControls = undefined;
   elements.lobby.hidden = true;
   elements.game.hidden = false;
@@ -419,7 +426,7 @@ function joinGame() {
 function receiveInput(source, input) {
   if (source !== channel || !source.open || !Array.isArray(input) || input.length !== openInput.length) return;
   if (!input.every(Number.isFinite)) return;
-  const buttons = input[4] & 15;
+  const buttons = input[4] & 63;
   pressed |= buttons & ~lastInput[4];
   lastInput = input.map((value, index) => index === 4 ? buttons : Math.max(-1, Math.min(1, value)));
   lastInputAt = performance.now();
@@ -436,7 +443,7 @@ function sendInput() {
   const pad = navigator.getGamepads?.().find(gamepad => gamepad?.mapping === "standard");
   const axis = (index, keyboard, deadzone) =>
     Math.abs(pad?.axes[index] ?? 0) > deadzone ? pad.axes[index] : keyboard;
-  const buttons = [["KeyE", 3], ["KeyR", 2], ["KeyF", 0], ["KeyQ", 1]];
+  const buttons = [["KeyE", 3], ["KeyR", 2], ["KeyF", 0], ["KeyQ", 1], ["BracketLeft", 6], ["BracketRight", 7]];
   const bits = buttons.reduce((mask, [key, index], i) =>
     mask | (keys.has(key) || pad?.buttons[index]?.pressed ? 1 << i : 0), 0);
   const dpadX = Number(!!pad?.buttons[15]?.pressed) - Number(!!pad?.buttons[14]?.pressed);
@@ -456,7 +463,7 @@ function sendInput() {
 }
 
 const controls = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowLeft", "ArrowDown",
-  "ArrowRight", "KeyI", "KeyJ", "KeyK", "KeyL", "KeyE", "KeyR", "KeyF", "KeyQ"]);
+  "ArrowRight", "KeyI", "KeyJ", "KeyK", "KeyL", "KeyE", "KeyR", "KeyF", "KeyQ", "BracketLeft", "BracketRight"]);
 for (const event of ["keydown", "keyup"]) {
   addEventListener(event, e => {
     if (launch.mode !== "guest" || elements.game.hidden || !controls.has(e.code)) return;

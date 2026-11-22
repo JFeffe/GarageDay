@@ -15,6 +15,7 @@ var race: Race
 var workers: Array[Dictionary] = []
 var markers: Array[MeshInstance3D] = []
 var guest_present := false
+var control_owner := -1
 
 func build(game: Node3D, site: Stands, session: Race) -> void:
 	stands = site
@@ -58,6 +59,9 @@ func reset() -> void:
 		worker.target = {}
 		worker.options = []
 		worker.progress = 0.0
+		worker.feedback_left = 0.0
+		worker.feedback_point = Vector2.ZERO
+		worker.feedback_ok = false
 		worker.latched = false
 		worker.avatar.position = Vector3(SPAWN[i].x,0.08,SPAWN[i].y)
 		worker.avatar.rotation.y = PI
@@ -75,6 +79,7 @@ func tick(dt: float, clock_rate: float, move: Vector2, use: bool, guest: Array, 
 		workers[1].target = {}
 		workers[1].options = []
 		workers[1].progress = 0.0
+		workers[1].feedback_left = 0.0
 		workers[1].latched = false
 		workers[1].velocity = Vector2.ZERO
 		workers[1].outline.hide()
@@ -89,6 +94,7 @@ func tick(dt: float, clock_rate: float, move: Vector2, use: bool, guest: Array, 
 
 func move_worker(index: int, dt: float, clock_rate: float, input: Vector2, use: bool, aim_input := Vector2.ZERO) -> void:
 	var worker := workers[index]
+	worker.feedback_left = maxf(0.0,worker.feedback_left-dt)
 	var origin: Vector2 = worker.point
 	if not stands.walkable(worker.point,race): worker.point = clear_point(worker.point)
 	var speed_limit := Visual.WALK_SPEED if worker.held=="" else Visual.CARRY_SPEED
@@ -112,7 +118,9 @@ func move_worker(index: int, dt: float, clock_rate: float, input: Vector2, use: 
 		var facing: Vector2 = worker.point.direction_to(option.point)
 		if not facing.is_zero_approx(): aim = facing
 		if worker.progress+0.0001>=option.duration:
-			complete(index,option)
+			worker.feedback_ok = complete(index,option)
+			worker.feedback_point = option.point
+			worker.feedback_left = 0.8
 			worker.latched = true
 			worker.progress = 0.0
 	worker.aim = aim
@@ -138,7 +146,8 @@ func clear_point(origin: Vector2) -> Vector2:
 func station_options(index: int) -> Array[Dictionary]:
 	var work: Array[Dictionary] = []
 	if race.phase!=Race.Phase.RACE: return work
-	work.append(target(-1,"control",Stands.CONTROL_POINT,"Ouvrir le contrôle course",2.0))
+	if control_owner<0:
+		work.append(target(-1,"control",Stands.CONTROL_POINT,"Ouvrir le contrôle course",2.0))
 	var worker := workers[index]
 	if (not guest_present and index==0) or workers[1-index].held!="nozzle":
 		work.append(target(-1,"nozzle",Stands.PUMP+Vector2(0.71,0.15),
@@ -192,16 +201,20 @@ func nearby(point: Vector2, facing: Vector2, options: Array) -> Dictionary:
 			result = option
 	return result
 
-func complete(index: int, option: Dictionary) -> void:
+func complete(index: int, option: Dictionary) -> bool:
 	if option.action=="control":
+		if control_owner>=0 or not at_control(index): return false
 		control_requested.emit(index)
-		return
+		return control_owner==index
 	var worker := workers[index]
 	if option.car<0:
+		if option.action=="nozzle" and guest_present and workers[1-index].held=="nozzle": return false
 		worker.held = "" if worker.held==option.action else option.action
-		return
+		return true
 	if race.manual_action(option.car,option.action,option.axle,option.wheel):
 		if option.action=="fuel": worker.held = ""
+		return true
+	return false
 
 func update_markers() -> void:
 	var shown := {}
@@ -217,7 +230,7 @@ func update_markers() -> void:
 
 func instruction(index: int) -> String:
 	var worker := workers[index]
-	if worker.target.is_empty(): return "Contrôle course au fond du garage" if worker.held=="" else "En main · "+held_item(index)
+	if worker.target.is_empty(): return "Poste de contrôle à gauche de la porte" if worker.held=="" else "En main · "+held_item(index)
 	var prefix := "N° %d · " % race.cars[worker.target.car].number if worker.target.car>=0 else ""
 	if worker.progress>0.0: return "%s%s  ·  %d %%" % [prefix,worker.target.title,roundi(progress(index)*100.0)]
 	return "Maintenir A / F  ·  %s%s" % [prefix,worker.target.title]

@@ -14,7 +14,7 @@ const BOX := Vector3(0,0.055,4.15)
 const GARAGE := Vector3(0,0.055,-5.9)
 const PUMP := Vector2(2.9,0.17)
 const TOOLS := [Vector2(5.05,-3.45),Vector2(6.75,-7.8)]
-const CONTROL_POINT := Vector2(4.25,-8.0)
+const CONTROL_POINT := Vector2(-7.45,0.56)
 const CONTROL_IDLE := Color("#587b7a")
 const CONTROL_WAIT := Color("#ffc06a")
 const CONTROL_READY := Color("#79edaa")
@@ -44,6 +44,7 @@ func build() -> void:
 	for z in [-8.15,-5.25,-2.35]:
 		paint(Vector2(-10.65,z),Vector2(10.65,z),0.023,Color("#929b91"))
 	for marker in range(-18,18):
+		if marker in [-10,-9,-8,-7]: continue
 		paint(Vector2(marker+0.07,1.57),Vector2(marker+0.70,1.57),0.075,CREAM)
 	build_garage()
 	build_control_desk()
@@ -123,20 +124,22 @@ func build_garage() -> void:
 
 func build_control_desk() -> void:
 	var x := CONTROL_POINT.x-0.57
-	var z := -9.63
-	block(Vector3(3.42,0.015,3.40),Vector3(x,0.037,-8.70),Color("#718a80"),0.01)
+	var z := -0.85
+	block(Vector3(3.42,0.022,2.96),Vector3(x,0.034,0.12),Color("#577974"),0.01)
 	for edge in [x-1.71,x+1.71]:
-		paint(Vector2(edge,-10.38),Vector2(edge,-7.0),0.063,CREAM,0.054)
-	paint(Vector2(x-1.71,-7.0),Vector2(x+1.71,-7.0),0.063,CREAM,0.054)
-	sign_text("CONTRÔLE",Vector3(x,0.058,-7.34),0.38,CREAM,true)
+		paint(Vector2(edge,-1.33),Vector2(edge,1.57),0.063,CREAM,0.054)
+	paint(Vector2(x-1.71,1.57),Vector2(x+1.71,1.57),0.09,GOLD,0.054)
+	paint(Vector2(x-1.71,1.63),Vector2(x+1.71,1.63),0.05,INK,0.052)
+	sign_text("CONTRÔLE",Vector3(x,0.058,1.25),0.38,CREAM,true)
+	arrow(Vector2(-4.93,0.77),Vector2(-5.97,0.77),0.086,GOLD)
 	block(Vector3(3.10,0.15,0.86),Vector3(x,0.94,z),Color("#bf936d"),0.06)
 	for side in [-1,1]:
 		block(Vector3(0.14,0.87,0.69),Vector3(x+side*1.40,0.50,z),INK)
 	block(Vector3(2.91,0.28,0.12),Vector3(x,0.74,z+0.372),INK)
 	sign_text("CONTRÔLE COURSE",Vector3(x,0.74,z+0.436),0.22,CREAM)
-	Props.fit(self,Props.STATION_MODELS.seat,Vector3(1.21,0.65,0.46),Vector3(x-0.94,0.040,-8.12),PI/2.0)
+	Props.fit(self,Props.STATION_MODELS.seat,Vector3(1.21,0.65,0.46),Vector3(x-0.94,0.055,0.42),PI/2.0)
 	obstacles.append(Rect2(x-1.65,z-0.52,3.30,1.04))
-	obstacles.append(Rect2(x-1.21,-8.86,0.54,1.45))
+	obstacles.append(Rect2(x-1.21,-0.23,0.54,1.30))
 	for i in range(3):
 		var screen_x := x+(i-1)*0.96
 		block(Vector3(0.33,0.04,0.29),Vector3(screen_x,1.03,z),INK,0.02)

@@ -36,7 +36,9 @@ Le bouton **Multijoueur** ouvre le mode Web dans le navigateur pour héberger ou
 
 Choisis **Nouvelle partie → Course de 12 h**, en local ou dans le navigateur. Tu gères les n° 27 et 81, chacune avec deux pilotes. Huit GT rivales roulent et s’arrêtent pendant que le classement se met à jour. L’horloge accélère en piste et ralentit lorsque tes voitures arrivent aux stands.
 
-Rejoins le **banc de contrôle**, au fond du garage. Maintiens **A / F** au repère des écrans, puis sélectionne la GT et ouvre son **Plan d’arrêt**. Choisis le box extérieur ou le garage, puis règle chaque intervention sur **Ignorer**, **Joueur** ou **Auto**. Les tâches automatiques sont plus longues et peuvent se dérouler en parallèle avec tes interventions. Le garage permet une réparation complète et laisse le box extérieur disponible. Une fois les travaux terminés, retourne au contrôle et choisis **Feu vert · reprendre la piste**.
+Rejoins le **poste de contrôle** à l’extérieur, à gauche de la porte du garage. Maintiens **A / F** au repère des écrans. Consulte les deux GT côte à côte et sélectionne celle à gérer avec **gauche / droite**. Le **Plan d’arrêt** permet de régler chaque intervention sur **Ignorer**, **Joueur** ou **Auto**, puis de choisir le box extérieur ou le garage. Les tâches automatiques sont plus longues et peuvent se dérouler en parallèle avec tes interventions. Une fois les travaux terminés, retourne au contrôle et choisis **Feu vert · reprendre la piste**.
+
+**LT / RT** ou **[ / ]** règle la vitesse en piste sur **×12, ×24 ou ×48**. La course passe automatiquement à **×5** aux stands et pendant la consultation du poste. Le chrono indique le temps écoulé et le temps restant, y compris en pause.
 
 Comme dans le garage de quartier, marche au **stick gauche / WASD / flèches**, vise au **stick droit / IJKL** et maintiens **A / F** sur le repère sélectionné. **LB / RB** ou **− / =** changent le zoom. Prends le pistolet à la pompe, puis branche-le sur la GT. Pour les pneus, lève chaque train avec son cric, change ses deux roues, puis abaisse-le. Récupère une clé près des outils pour réparer. Les deux crics et la pompe sont partagés entre les deux GT.
 
@@ -53,6 +55,8 @@ Dans le navigateur, **Multijoueur → Créer une partie → Course de 12 h** par
 | Pivoter un objet ou vider le chariot tracté | X | R |
 | Annuler ou refuser une réparation | B | Q |
 | Zoomer | LB / RB | − / = |
+| Ralentir / accélérer la course | LT / RT | [ / ] |
+| Sélectionner une GT au contrôle | Croix / stick gauche, gauche ou droite | Flèches gauche ou droite |
 | Accélérer, freiner et reculer | Stick gauche vers le haut, au centre ou vers le bas | W / S |
 | Braquer | Stick droit horizontal | A / D |
 

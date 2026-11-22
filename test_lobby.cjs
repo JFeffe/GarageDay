@@ -15,7 +15,7 @@ function lobby(hash = "") {
   const history = [];
   const context = vm.createContext({
     document: { querySelectorAll: () => Object.values(elements), body: { dataset: { game: "game.html" } } },
-    window: {}, location: { hash, pathname: "/", search: "" }, URLSearchParams, URL,
+    window: {}, location: { hash, pathname: "/", search: "" }, URLSearchParams, URL, performance,
     history: { replaceState(_state, _title, url) { history.push(url); } },
     localStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) },
     addEventListener() {}, setInterval() {}, clearTimeout() {}, setTimeout(callback) { tasks.push(callback); },
@@ -33,11 +33,17 @@ assert.equal(JSON.parse(page.bridge.startInfo()).layout, 3);
 const endurance = lobby();
 assert.match(fs.readFileSync(`${__dirname}/web/index.html`, "utf8"), /<input type="radio" name="layout" value="endurance">/);
 endurance.bridge.storeSave("garage-checkpoint");
-vm.runInContext('openPicker("solo"); startSelectedGame("endurance"); ready = true; gameControls = () => {};', endurance.context);
+vm.runInContext(`openPicker("solo"); startSelectedGame("endurance"); ready = true;
+  gameControls = (action, value) => {
+    if (action === "pause" && value) window.GarageDay.reportRacePause("00:03:00 · Reste 11:57:00");
+  };`, endurance.context);
 assert.equal(JSON.parse(endurance.bridge.startInfo()).activity, "endurance");
 endurance.bridge.storeSave("race-state");
 assert.equal(endurance.saved.get("garage-day.solo.v1"), "garage-checkpoint");
-vm.runInContext("pauseSolo(); continueGame();", endurance.context);
+vm.runInContext("pauseSolo();", endurance.context);
+assert.equal(endurance.elements["paused-race-clock"].hidden, false);
+assert.match(endurance.elements["paused-race-clock"].textContent, /00:03:00.*11:57:00/);
+vm.runInContext("continueGame();", endurance.context);
 assert.equal(JSON.parse(endurance.bridge.startInfo()).activity, "endurance");
 assert.equal(endurance.elements.game.hidden, false);
 assert.equal(page.elements.multiplayer.hidden, false, "The native link must open multiplayer directly");
@@ -62,6 +68,14 @@ vm.runInContext("continueGame()", page.context);
 assert.equal(page.elements.game.hidden, false, "Continuing should show the existing game");
 
 const host = lobby();
+const speedInput = lobby();
+vm.runInContext(`openGame("host", 3, "", "endurance"); channel = { open: true };
+  receiveInput(channel, [0, 0, 0, 0, 32, 0, 0]);`, speedInput.context);
+assert.equal(JSON.parse(speedInput.bridge.guestInput())[8], 32, "RT should reach Godot as a single press");
+assert.equal(JSON.parse(speedInput.bridge.guestInput())[8], 0);
+vm.runInContext("receiveInput(channel, [0, 0, 0, 0, 16, 0, 0]);", speedInput.context);
+assert.equal(JSON.parse(speedInput.bridge.guestInput())[8], 16, "LT should reach Godot as a single press");
+
 vm.runInContext('openGame("host"); ready = true;', host.context);
 host.bridge.returnToMenu();
 assert.equal(host.elements["game-frame"].src, "game.html");

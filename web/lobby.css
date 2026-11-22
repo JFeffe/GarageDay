@@ -36,6 +36,7 @@ button.quiet:hover { color: var(--text); }
 .topbar { display: flex; justify-content: space-between; align-items: center; min-height: 50px; border-bottom: 1px solid var(--line); }
 .back { margin-left: -.65rem; }
 .version { margin-left: auto; color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+#paused-race-clock { margin: .45rem .75rem .45rem 0; font-variant-numeric: tabular-nums; font-weight: 650; }
 .home {
   min-height: min(620px, 77vh);
   display: grid;
