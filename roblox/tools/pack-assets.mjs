@@ -6,7 +6,7 @@ import { PNG } from 'pngjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const target = path.join(root, 'build', 'roblox', 'MeshData');
-const source = path.join(root, 'assets', 'garage_quartier');
+const source = path.join(root, 'assets');
 const chunkLength = 24000;
 const coordinateScale = 256;
 const wheelNames = {
@@ -17,12 +17,13 @@ const wheelNames = {
 };
 
 function readGlb(name) {
-  const file = fs.readFileSync(path.join(source, `${name}.glb`));
+  const filename = path.join(source, `${name}.glb`);
+  const file = fs.readFileSync(filename);
   if (file.toString('ascii', 0, 4) !== 'glTF' || file.readUInt32LE(4) !== 2) {
     throw new Error(`Expected a glTF 2 binary for ${name}`);
   }
   const jsonEnd = 20 + file.readUInt32LE(12);
-  return { spec: JSON.parse(file.toString('utf8', 20, jsonEnd)), data: file.subarray(jsonEnd + 8) };
+  return { spec: JSON.parse(file.toString('utf8', 20, jsonEnd)), data: file.subarray(jsonEnd + 8), directory: path.dirname(filename) };
 }
 
 const readers = {
@@ -71,8 +72,8 @@ function sampleColor(glb, material, uv, images) {
     const spec = glb.spec.images[imageId];
     let bytes;
     if (spec.uri) {
-      const file = path.resolve(source, decodeURIComponent(spec.uri));
-      if (!file.startsWith(source + path.sep)) throw new Error(`Invalid texture path: ${spec.uri}`);
+      const file = path.resolve(glb.directory, decodeURIComponent(spec.uri));
+      if (!file.startsWith(glb.directory + path.sep)) throw new Error(`Invalid texture path: ${spec.uri}`);
       bytes = fs.readFileSync(file);
     } else {
       const view = glb.spec.bufferViews[spec.bufferView];
@@ -196,6 +197,23 @@ function pack(name, dimensions, groupFor, turnAround = false) {
   }
 }
 
-pack('sedan', [6.3, 4.6, 13.8], name => wheelNames[name] ?? 'Sedan', true);
-pack('car-lift', [10.5, 10.4, 7.4], name => name.includes('carriage') ? 'LiftCarriage' : 'LiftBase');
-pack('impact-wrench', [0.85, 1.55, 1.45], () => 'Wrench');
+pack('garage_quartier/sedan', [6.3, 4.6, 13.8], name => wheelNames[name] ?? 'Sedan', true);
+pack('garage_quartier/car-lift', [10.5, 9.15, 7.4], name => name.includes('carriage') ? 'LiftCarriage' : 'LiftBase');
+for (const [name, model, size] of [
+  ['garage_quartier/impact-wrench', 'Wrench', [0.85, 1.48, 1.42]],
+  ['garage_quartier/reception-desk', 'Reception', [5.75, 3.55, 2.5]],
+  ['garage_quartier/waiting-bench', 'Bench', [2.26, 2.66, 2.68]],
+  ['garage_quartier/workbench', 'Workbench', [2.86, 3.05, 2.62]],
+  ['garage_quartier/tool-cabinet', 'Cabinet', [2.73, 2.37, 2.45]],
+  ['garage_quartier/parts-shelf', 'Shelf', [2.62, 3.45, 2.52]],
+  ['garage_quartier/tool-trolley', 'Trolley', [2.76, 2.55, 2.45]],
+  ['garage_quartier/roller-door', 'Roller', [9.35, 8.15, 0.43]],
+  ['garage_quartier/oil-drum', 'Drum', [1.84, 2.36, 1.84]],
+  ['garage_quartier/shop-bin', 'Bin', [1.85, 1.94, 1.85]],
+  ['kenney/desk', 'Desk', [5.6, 2.62, 2.55]],
+  ['kenney/chairCushion', 'Chair', [2.05, 2.68, 2.08]],
+  ['kenney/bookcaseClosedDoors', 'Bookcase', [2.3, 3.4, 1.4]],
+  ['kenney/pottedPlant', 'Plant', [1.52, 2.1, 1.52]],
+]) {
+  pack(name, size, () => model);
+}

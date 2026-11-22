@@ -1,91 +1,116 @@
 --!strict
 
-export type State = {
-	step: number,
-	wrenchOwner: number,
-	padsOwner: number,
-	moving: boolean,
-}
-
-type Step = {
+export type Step = {
 	action: string,
 	title: string,
-	hint: string,
 	target: string,
 	hold: number,
-	item: ("wrenchOwner" | "padsOwner")?,
+	item: ("tool" | "pads")?,
+	wheel: string?,
+	remove: boolean?,
+}
+export type Job = "brakes" | "pressure"
+type JobSpec = { name: string, tool: string, steps: { Step } }
+export type State = {
+	job: Job,
+	step: number,
+	toolOwner: number,
+	padsOwner: number,
+	moving: boolean,
+	raised: boolean,
+	removed: { [string]: boolean },
+	replaced: { [string]: boolean },
 }
 
 local Repair = {}
 
-Repair.steps = table.freeze({
-	{ action = "raise", title = "Lever le pont", hint = "Vise le levier jaune.", target = "Lever", hold = 0 },
-	{ action = "loosen", title = "Desserrer la roue", hint = "Prends la clé à choc puis vise la roue avant gauche.", target = "Wheel", hold = 0.65, item = "wrenchOwner" },
-	{ action = "remove", title = "Déposer la roue", hint = "Retire la roue pour accéder au frein.", target = "Wheel", hold = 0.45 },
-	{ action = "install", title = "Poser les plaquettes", hint = "Prends les plaquettes sur l’étagère puis vise le disque.", target = "Wheel", hold = 0.85, item = "padsOwner" },
-	{ action = "mount", title = "Remonter la roue", hint = "Replace la roue sur son moyeu.", target = "Wheel", hold = 0.45 },
-	{ action = "tighten", title = "Serrer la roue", hint = "Serre la roue avec la clé à choc.", target = "Wheel", hold = 0.65, item = "wrenchOwner" },
-	{ action = "lower", title = "Abaisser le pont", hint = "Retourne au levier pour terminer l’intervention.", target = "Lever", hold = 0 },
-	{ action = "replay", title = "Intervention terminée", hint = "Reviens au levier pour recommencer.", target = "Lever", hold = 0.65 },
-} :: { Step })
+local brakes: { Step } = {
+	{ action = "raise", title = "Lever le pont", target = "Lever", hold = 0 },
+}
 
-local installStep = 4
+local function addWheel(wheel: string, side: string)
+	local stages: { { action: string, title: string, hold: number, item: ("tool" | "pads")?, remove: boolean? } } = {
+		{ action = "loosen", title = "Desserrer la roue", hold = 0.65, item = "tool" },
+		{ action = "remove", title = "Déposer la roue", hold = 0.45, remove = true },
+		{ action = "install", title = "Poser les plaquettes", hold = 0.85, item = "pads" },
+		{ action = "mount", title = "Remonter la roue", hold = 0.45, remove = false },
+		{ action = "tighten", title = "Serrer la roue", hold = 0.65, item = "tool" },
+	}
+	for _, stage in stages do
+		table.insert(brakes, {
+			action = stage.action .. wheel, title = stage.title .. " · " .. side,
+			target = wheel, hold = stage.hold, item = stage.item, wheel = wheel, remove = stage.remove,
+		})
+	end
+end
 
-function Repair.new(): State
-	return { step = 1, wrenchOwner = 0, padsOwner = 0, moving = false }
+addWheel("FrontLeft", "avant gauche")
+addWheel("FrontRight", "avant droite")
+table.insert(brakes, { action = "lower", title = "Abaisser le pont", target = "Lever", hold = 0 })
+
+local jobs: { [Job]: JobSpec } = {
+	brakes = { name = "Plaquettes avant", tool = "Clé à choc", steps = table.freeze(brakes) },
+	pressure = { name = "Pression des pneus", tool = "Manomètre", steps = table.freeze({
+		{ action = "measure", title = "Contrôler la pression · arrière droite", target = "BackRight", hold = 1.15, item = "tool" },
+	} :: { Step }) },
+}
+Repair.jobs = table.freeze(jobs)
+
+function Repair.new(job: Job): State
+	return { job = job, step = 1, toolOwner = 0, padsOwner = 0, moving = false, raised = false, removed = {}, replaced = {} }
+end
+
+function Repair.current(state: State): Step?
+	return Repair.jobs[state.job].steps[state.step]
 end
 
 function Repair.canTakePads(state: State): boolean
-	return state.step <= installStep and state.padsOwner == 0
+	if state.job ~= "brakes" or state.padsOwner ~= 0 then return false end
+	for i = state.step, #brakes do
+		if brakes[i].item == "pads" then return true end
+	end
+	return false
 end
 
 function Repair.act(state: State, playerId: number, action: string): boolean
-	if action == "takeWrench" and state.wrenchOwner == 0 and state.step < #Repair.steps then
-		state.wrenchOwner = playerId
+	local step = Repair.current(state)
+	if not step then return false end
+	if action == "takeTool" and state.toolOwner == 0 then
+		state.toolOwner = playerId
 		return true
-	elseif action == "returnWrench" and state.wrenchOwner == playerId then
-		state.wrenchOwner = 0
+	elseif action == "returnTool" and state.toolOwner == playerId then
+		state.toolOwner = 0
 		return true
 	elseif action == "takePads" and Repair.canTakePads(state) then
 		state.padsOwner = playerId
 		return true
 	end
 
-	local step = Repair.steps[state.step]
-	local itemOwner = if step.item == "padsOwner" then state.padsOwner else state.wrenchOwner
-	if state.moving or action ~= step.action or (step.item and itemOwner ~= playerId) then
-		return false
-	end
-
+	local owner = if step.item == "pads" then state.padsOwner else state.toolOwner
+	if state.moving or action ~= step.action or (step.item and owner ~= playerId) then return false end
 	if action == "raise" or action == "lower" then
 		state.moving = true
-	elseif action == "replay" then
-		state.step = 1
-		state.wrenchOwner = 0
-		state.padsOwner = 0
-	else
-		if action == "install" then
-			state.padsOwner = 0
-		end
-		state.step += 1
+		return true
 	end
+	if step.wheel and step.remove ~= nil then state.removed[step.wheel] = step.remove end
+	if step.wheel and step.item == "pads" then
+		state.padsOwner = 0
+		state.replaced[step.wheel] = true
+	end
+	state.step += 1
 	return true
 end
 
 function Repair.finishLift(state: State)
-	if state.moving then
-		state.moving = false
-		state.step += 1
-	end
+	if not state.moving then return end
+	state.raised = not state.raised
+	state.moving = false
+	state.step += 1
 end
 
 function Repair.release(state: State, playerId: number)
-	if state.wrenchOwner == playerId then
-		state.wrenchOwner = 0
-	end
-	if state.padsOwner == playerId then
-		state.padsOwner = 0
-	end
+	if state.toolOwner == playerId then state.toolOwner = 0 end
+	if state.padsOwner == playerId then state.padsOwner = 0 end
 end
 
 return Repair

@@ -1,8 +1,8 @@
 # Garage Day dans Roblox Studio
 
-Le Petit Atelier propose une intervention à la première personne sur la roue avant gauche d’une berline. Lève le pont, desserre la roue avec la clé à choc, dépose-la, prends des plaquettes à l’étagère, pose-les, remonte la roue et abaisse le pont. Le levier permet ensuite de recommencer.
+Le Petit Atelier reprend le plan de la première carte Godot, avec son bureau, sa salle d’attente, ses comptoirs, sa baie de réparation et ses places extérieures. Utilise le téléphone du bureau pour ouvrir le service. Accueille chaque client, conduis sa berline d’A 01 à la baie 01, fais l’intervention, gare le véhicule en P 01 puis encaisse à la caisse. Camille vient pour les plaquettes des deux roues avant et Noah pour la pression du pneu arrière droit. Le téléphone ouvre la journée suivante. La recette cumulée est conservée pendant la session.
 
-Approche-toi du poste et suis le tableau de service. Utilise **E** au clavier, **X** à la manette ou touche l’invite sur téléphone. À deux, l’un peut lever le pont et travailler avec la clé pendant que l’autre prépare les plaquettes. Un mécano seul peut faire toute l’intervention.
+À pied, joue à la première personne et utilise **E** au clavier, **X** à la manette ou l’invite tactile. À deux, partagez les étapes de la journée et les outils de réparation. Au volant, la caméra passe derrière la berline. Utilise **WASD** ou les flèches, le stick gauche ou les commandes tactiles pour conduire. Relâche l’accélérateur sur la place indiquée, puis valide avec **E**, **X** ou le bouton à l’écran. Pour descendre en cours de trajet, arrête-toi et utilise **Q**, **B** ou **Descendre**.
 
 ## Ouvrir et tester
 
@@ -16,14 +16,14 @@ npm ci
 npm run build
 ```
 
-Les scripts se trouvent dans `src/`. Le serveur gère les étapes, l’outillage et le pont. Le client affiche le tableau de service et utilise la caméra et les commandes de Roblox. Tu peux aussi utiliser `rojo serve` après `npm run assets` pour continuer à modifier les scripts dans le dépôt et les synchroniser avec Studio.
+Les scripts se trouvent dans `src/`. Le serveur gère la journée, la circulation des clients, la conduite et les réparations partagées. Les joueurs voient l’étape en cours et la recette sur leur tableau de service. Tu peux utiliser `rojo serve` après `npm run assets` pour synchroniser les modifications dans Studio.
 
 ## Modèles du garage
 
-La construction reprend les fichiers `sedan.glb`, `car-lift.glb` et `impact-wrench.glb` du jeu Godot. Elle conserve leur géométrie et applique les couleurs des matériaux en échantillonnant les textures par triangle. Le serveur prépare les modèles au démarrage. Si les API de maillage sont indisponibles, la version locale charge des formes de remplacement pour permettre le test du jeu. L’attribut `OriginalModels` du modèle `Le Petit Atelier` indique si les modèles d’origine ont été chargés.
+La construction reprend les GLB de la berline, du pont, de la clé à choc et de plusieurs meubles, accessoires et rideaux du jeu Godot. Elle conserve leur géométrie et applique les couleurs des matériaux en échantillonnant les textures par triangle. Le serveur prépare les modèles au démarrage. Si les API de maillage sont indisponibles, le jeu charge des formes de remplacement. L’attribut `OriginalModels` du modèle `Le Petit Atelier` confirme le chargement des modèles de la berline, du pont et de la clé à choc.
 
 Les crédits et les licences des modèles sont dans le [README de Garage Day](../README.md#cr%C3%A9dits-des-assets). Pour tester une future version hébergée avec les modèles originaux, configure le réglage **Mesh / Image APIs** du projet ou importe les GLB dans Studio. [Règles des maillages éditables](https://create.roblox.com/docs/reference/engine/classes/EditableMesh)
 
-## Vérifier les règles de réparation
+## Vérifier les règles de service
 
 Depuis la racine du dépôt, lance `luau roblox/tests/repair.luau` avec la [CLI Luau](https://github.com/luau-lang/luau/releases).

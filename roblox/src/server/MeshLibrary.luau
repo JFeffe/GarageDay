@@ -56,14 +56,11 @@ function MeshLibrary.load()
 	local models = {}
 	for _, asset in script.Parent.MeshData:GetChildren() do
 		local ok, mesh = pcall(build, asset)
-		if not ok then
-			for _, created in models do
-				created:Destroy()
-			end
-			warn("Garage Day · modèles 3D indisponibles. " .. tostring(mesh))
-			return {}
+		if ok then
+			models[asset.Name] = mesh
+		else
+			warn("Garage Day · " .. asset.Name .. " · " .. tostring(mesh))
 		end
-		models[asset.Name] = mesh
 	end
 	return models
 end
