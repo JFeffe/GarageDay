@@ -60,7 +60,11 @@ class ActionFeedback extends Control:
 		if outcome!="":
 			var color := Color("#83e9af") if outcome=="✓" else Color("#ffaa87")
 			draw_circle(Vector2(34,8),11,Color("#172b31"),true,-1.0,true)
-			draw_string(ThemeDB.fallback_font,Vector2(26,14),outcome,HORIZONTAL_ALIGNMENT_CENTER,16,16,color)
+			if outcome=="✓":
+				draw_polyline(PackedVector2Array([Vector2(28,8),Vector2(32,12),Vector2(40,4)]),color,2.5,true)
+			else:
+				draw_line(Vector2(29,3),Vector2(39,13),color,2.5,true)
+				draw_line(Vector2(39,3),Vector2(29,13),color,2.5,true)
 			return
 		draw_line(Vector2(5,8),Vector2(63,8),Color("#162b31"),12,true)
 		draw_line(Vector2(7,8),Vector2(61,8),Color("#617777"),6,true)
@@ -304,7 +308,7 @@ func open_plan(index: int) -> void:
 	var car: Dictionary = race.cars[index]
 	draft = race.recommended_orders(car)
 	send_to_garage = car.garage_stop or car.state==Race.State.GARAGE or car.damage>=0.38
-	planner_feedback.text = "↑ ↓ choisir · ← → régler · A / F valider"
+	planner_feedback.text = "Haut / bas pour choisir · Gauche / droite pour régler\nA / F pour valider"
 	console_actions.hide()
 	planner.show()
 	refresh()
