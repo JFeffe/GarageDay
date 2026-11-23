@@ -51,43 +51,74 @@ local function load(slot)
 	return nil
 end
 
-function WorkshopSaves.new(state, session)
-	local self = setmetatable({ state = state, session = session, settings = {} }, WorkshopSaves)
+function WorkshopSaves.new(session, catalog, pick)
+	local self = setmetatable({ session = session, catalog = catalog, pick = pick, settings = {}, campaigns = {} }, WorkshopSaves)
 	session:SetAttribute("SaveState", "loading")
-	self.backend = backend()
 	return self
 end
 
 function WorkshopSaves:slot(key)
+	self.backend = self.backend or backend()
 	return SaveSlot.new(self.backend, key, function() return HttpService:GenerateGUID(false) end)
 end
 
 function WorkshopSaves:updateStatus(slot)
-	if slot == self.workshop then
+	if slot == self.activeSlot then
 		self.session:SetAttribute("SaveState", slot.status)
+		if not slot.loaded then self.session:SetAttribute("LaunchStatus", slot.status) end
 	elseif slot.player and slot.player.Parent then
 		slot.player:SetAttribute("OptionsSaveState", slot.status)
 	end
 end
 
-function WorkshopSaves:restore(player)
+function WorkshopSaves:loadCampaigns(player)
 	local slot = self:slot("workshop_" .. player.UserId)
-	self.workshop = slot
-	self.session:SetAttribute("SaveOwner", player.DisplayName)
 	local previous = load(slot)
-	if previous and not Service.restore(self.state, previous) then
+	local campaigns = Service.readCampaigns(previous, self.catalog, self.pick)
+	if slot.loaded and not campaigns then
 		slot.loaded = false
 		slot.status = "unsupported"
 	end
+	return slot, campaigns or {}
+end
+
+function WorkshopSaves:showCampaigns()
+	for _, map in Service.maps do
+		local existing = self.campaigns[map]
+		self.session:SetAttribute(map .. "Day", existing and existing.day)
+		self.session:SetAttribute(map .. "Cash", existing and existing.cash)
+		self.session:SetAttribute(map .. "Complete", existing and existing.complete)
+	end
+	local slot = self.workshop
+	self.session:SetAttribute("LaunchStatus", if not slot then "loading" elseif slot.loaded then "ready" else slot.status)
+end
+
+function WorkshopSaves:selectCampaign(map, action, confirmed)
+	local slot = self.workshop
+	if not slot then return end
+	if action == "trial" and not slot.loaded then
+		local state = Service.chooseCampaign({}, map, "new", false, self.catalog, self.pick)
+		if not state then return end
+		self.activeSlot, self.state = nil, state
+		self.session:SetAttribute("SaveState", slot.status)
+		return state
+	end
+	if not slot.loaded then return end
+	local state = Service.chooseCampaign(self.campaigns, map, action, confirmed, self.catalog, self.pick)
+	if not state then return end
+	self.activeSlot, self.state = slot, state
 	self:updateStatus(slot)
+	if action == "new" then self:checkpoint() end
+	return state
 end
 
 function WorkshopSaves:watch(player)
-	local slot = self:slot("options_" .. player.UserId)
-	slot.player = player
-	self.settings[player] = slot
 	player:SetAttribute("MouseSensitivity", Preferences.defaultSensitivity)
 	task.spawn(function()
+		local slot = self:slot("options_" .. player.UserId)
+		if player.Parent ~= Players then return end
+		slot.player = player
+		self.settings[player] = slot
 		local saved = load(slot)
 		if self.settings[player] ~= slot then return end
 		local sensitivity = saved and Preferences.sensitivity(saved.sensitivity)
@@ -116,13 +147,13 @@ function WorkshopSaves:changeSensitivity(player, value)
 end
 
 function WorkshopSaves:checkpoint()
-	local slot = self.workshop
-	if slot and slot.loaded and slot:queue(Service.snapshot(self.state)) then self:schedule(slot) end
+	local slot = self.activeSlot
+	if slot and slot.loaded and slot:queue(Service.saveCampaign(self.campaigns, self.state)) then self:schedule(slot) end
 end
 
 function WorkshopSaves:flush(slot)
 	if not slot or not slot:hasPending() or slot.busy then return end
-	if slot == self.workshop then self.session:SetAttribute("SaveState", "saving") end
+	if slot == self.activeSlot then self.session:SetAttribute("SaveState", "saving") end
 	slot:flush()
 	self:updateStatus(slot)
 	if slot.status == "saved" and slot:hasPending() then self:schedule(slot) end
@@ -144,7 +175,7 @@ function WorkshopSaves:leaving(player)
 end
 
 function WorkshopSaves:retryPending()
-	self:flush(self.workshop)
+	self:flush(self.activeSlot)
 	for _, slot in self.settings do
 		if slot:hasPending() then task.spawn(function() self:flush(slot) end) end
 	end
@@ -157,7 +188,7 @@ function WorkshopSaves:bindToClose()
 			pending += 1
 			task.spawn(function() self:drain(slot) pending -= 1 end)
 		end
-		self:drain(self.workshop)
+		self:drain(self.activeSlot)
 		local expires = os.clock() + 12
 		while pending > 0 and os.clock() < expires do task.wait(0.1) end
 	end)

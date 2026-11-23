@@ -2,6 +2,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
+Players.CharacterAutoLoads = false
+
 local Repair = require(ReplicatedStorage.GarageDay.Repair)
 local Service = require(ReplicatedStorage.GarageDay.Service)
 local Drive = require(script.Parent.Drive)
@@ -12,13 +14,18 @@ local World = require(script.Parent.WorkshopWorld)
 local WorkshopSaves = require(script.Parent.WorkshopSaves)
 
 local random = Random.new()
-local state = Service.new(Repair.jobs, function(maximum) return random:NextInteger(1, maximum) end)
+local function pick(maximum)
+	return random:NextInteger(1, maximum)
+end
+local state
 local session = Instance.new("Folder")
 session.Name = "GarageDaySession"
+session:SetAttribute("LaunchMode", "menu")
+session:SetAttribute("LaunchStatus", "loading")
 local bayFolder = Instance.new("Folder")
 bayFolder.Name = "Bays"
 bayFolder.Parent = session
-local saves = WorkshopSaves.new(state, session)
+local saves = WorkshopSaves.new(session, Repair.jobs, pick)
 local workshopOwner, workshopReady
 local world, lanes, prompts
 local owners, equipment, layoutsHeld = {}, {}, {}
@@ -37,9 +44,10 @@ local carryControl = remote("CarryControl")
 local optionsControl = remote("OptionsControl")
 local furnitureControl = remote("FurnitureControl")
 local repairFeedback = remote("RepairFeedback")
+local launchControl = remote("LaunchControl")
 
 local function activeRoot(player)
-	if player:GetAttribute("GarageDriverBay") then return nil end
+	if not workshopReady or player:GetAttribute("GarageDriverBay") then return nil end
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -292,8 +300,7 @@ refresh = function()
 	local nextDay = state.day < Service.lastDay
 	prompts.open.Enabled = workshopReady == true and (phase == "free" or (phase == "vendor" and nextDay))
 	prompts.open.ActionText = if phase == "vendor" then "Ouvrir la prochaine journée" else "Ouvrir le service"
-	prompts.map.Enabled = prompts.open.Enabled
-	prompts.map.ActionText = if state.map == "PetitAtelier" then "Choisir le Tandem · 2 baies" else "Choisir le Petit Atelier · 1 baie"
+	prompts.map.Enabled = workshopReady == true and (phase == "free" or phase == "vendor" or phase == "complete")
 	prompts.finish.Enabled = phase == "vendor" and not nextDay
 	prompts.book.Enabled = phase == "service" and not state.extraBooked and #state.orders < Service.maxAppointments
 	prompts.vendor.Enabled = phase == "vendor"
@@ -501,13 +508,23 @@ local function mountBay(bay)
 	end
 end
 
-local function setSpawns()
-	for i, player in Players:GetPlayers() do
-		local spawn = world.spawns[(i - 1) % #world.spawns + 1]
-		player.RespawnLocation = spawn
-		player:SetAttribute("GarageFocusBay", nil)
-		if player.Character then player.Character:PivotTo(spawn.CFrame + Vector3.new(0, 3, 0)) end
+local function placePlayer(player, spawn)
+	player.RespawnLocation = spawn
+	player:SetAttribute("GarageFocusBay", nil)
+	if player.Character then player.Character:PivotTo(spawn.CFrame + Vector3.new(0, 3, 0)) end
+end
+
+local function openLauncher(player)
+	if player ~= workshopOwner or next(layoutsHeld) or world.cart.owner or next(owners) then return end
+	for _, bay in world.bays do
+		if next(bay.repair.carried) then return end
 	end
+	saves:checkpoint()
+	saves:showCampaigns()
+	workshopReady = false
+	session:SetAttribute("LaunchReturn", true)
+	session:SetAttribute("LaunchMode", "menu")
+	refresh()
 end
 
 local function mountPrompts()
@@ -521,14 +538,8 @@ local function mountPrompts()
 		if night then task.spawn(World.moveVendor, world, false) end
 		advance()
 	end)
-	prompts.map = createPrompt("SelectMap", "Changer de carte", "Téléphone", world.targets.Phone, 0.42, function(player)
-		if held(player) or next(layoutsHeld) or world.cart.owner or next(owners) then return end
-		for _, bay in world.bays do if next(bay.repair.carried) then return end end
-		if Service.selectMap(state, if state.map == "PetitAtelier" then "Tandem" else "PetitAtelier") then
-			mount()
-			saves:checkpoint()
-		end
-	end, Enum.KeyCode.F)
+	prompts.map = createPrompt("SelectCampaign", "Choisir une partie", "Téléphone", world.targets.Phone, 0.42,
+		openLauncher, Enum.KeyCode.F)
 	prompts.finish = createPrompt("FinishCampaign", "Voir le bilan des 10 jours", "Téléphone", world.targets.Phone, 0.65, function()
 		if not next(layoutsHeld) and Service.finishCampaign(state) then saves:checkpoint() refresh() end
 	end)
@@ -609,6 +620,7 @@ mount = function()
 		end
 		World.destroy(world)
 		bayFolder:ClearAllChildren()
+		world = nil
 	end
 	world, lanes = World.build(state.map), {}
 	Props.apply(world, state)
@@ -618,7 +630,9 @@ mount = function()
 	session:SetAttribute("Map", state.map)
 	session:SetAttribute("MapName", world.layout.name)
 	session:SetAttribute("BayCount", #world.bays)
-	setSpawns()
+	for i, player in Players:GetPlayers() do
+		placePlayer(player, world.spawns[(i - 1) % #world.spawns + 1])
+	end
 	if state.phase == "vendor" then World.restoreVendor(world)
 	elseif state.phase == "complete" then World.setEvening(world, true) end
 	refresh()
@@ -650,6 +664,7 @@ local function groundDrop(player, key)
 end
 
 carryControl.OnServerEvent:Connect(function(player)
+	if not workshopReady then return end
 	local kind, key, bay = held(player)
 	if kind == "furniture" then
 		stopArrangement(player)
@@ -708,6 +723,7 @@ local function drivingGoal(bay)
 end
 
 driveControl.OnServerEvent:Connect(function(player, action, throttle, steer)
+	if not workshopReady then return end
 	local bay = world.bays[player:GetAttribute("GarageDriverBay")]
 	if not bay or bay.lane.driver ~= player.UserId or not bay.drive.rider then return end
 	local drive, lane = bay.drive, bay.lane
@@ -735,7 +751,7 @@ end)
 
 local elapsed, doorElapsed, saveElapsed = 0, 0, 0
 RunService.Heartbeat:Connect(function(dt)
-	if not world then return end
+	if not workshopReady then return end
 	for _, bay in world.bays do
 		if bay.lane.driver ~= 0 then
 			bay.drive:update(dt)
@@ -772,6 +788,7 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 local function release(player)
+	if not world then return end
 	stopArrangement(player)
 	if world.cart.owner == player then Props.parkCart(world) end
 	local key = toolHeld(player)
@@ -785,36 +802,73 @@ local function release(player)
 	refresh()
 end
 
-local function watchPlayer(player)
-	saves:watch(player)
-	local spawn = world.spawns[(#Players:GetPlayers() - 1) % #world.spawns + 1]
-	player.RespawnLocation = spawn
-	if player.Character then player.Character:PivotTo(spawn.CFrame + Vector3.new(0, 3, 0)) end
-	player.CharacterRemoving:Connect(function() release(player) end)
-	if workshopOwner then return end
+local loadRevision = 0
+local function inspectCampaigns(player)
+	loadRevision += 1
+	local revision = loadRevision
 	workshopOwner = player
+	session:SetAttribute("LaunchOwnerId", player and player.UserId)
+	session:SetAttribute("SaveOwner", player and player.DisplayName)
+	session:SetAttribute("LaunchStatus", "loading")
+	if not player then return end
 	task.spawn(function()
-		saves:restore(workshopOwner)
-		workshopReady = true
-		if session:GetAttribute("Map") ~= state.map then mount()
-		else
-			Props.apply(world, state)
-			Furniture.restore(world, state.furniture[state.map])
-		end
-		if state.phase == "arrival" then
-			state.phase = "service"
-			advance()
-		elseif state.phase == "closing" then
-			openMarket()
-		else
-			if state.phase == "vendor" then World.restoreVendor(world)
-			elseif state.phase == "complete" then World.setEvening(world, true) end
-			refresh()
-		end
+		local slot, campaigns = saves:loadCampaigns(player)
+		if revision ~= loadRevision or player.Parent ~= Players then return end
+		saves.workshop, saves.campaigns = slot, campaigns
+		saves:showCampaigns()
 	end)
 end
 
-mount()
+local function enterWorkshop(selected)
+	session:SetAttribute("LaunchMode", "starting")
+	session:SetAttribute("LaunchReturn", nil)
+	state = selected
+	elapsed, doorElapsed, saveElapsed = 0, 0, 0
+	mount()
+	workshopReady = true
+	for _, player in Players:GetPlayers() do
+		if not player.Character then
+			task.spawn(function()
+				if player.Parent == Players and not player.Character then player:LoadCharacterAsync() end
+			end)
+		end
+	end
+	Players.CharacterAutoLoads = true
+	if state.phase == "arrival" then
+		state.phase = "service"
+		advance()
+	elseif state.phase == "closing" then
+		task.spawn(openMarket)
+	else
+		refresh()
+	end
+	session:SetAttribute("LaunchMode", "playing")
+end
+
+launchControl.OnServerEvent:Connect(function(player, action, map, confirmed)
+	if player ~= workshopOwner or session:GetAttribute("LaunchMode") ~= "menu" then return end
+	if action == "back" and session:GetAttribute("LaunchReturn") then
+		workshopReady = true
+		session:SetAttribute("LaunchReturn", nil)
+		refresh()
+		session:SetAttribute("LaunchMode", "playing")
+	elseif action == "retry" and session:GetAttribute("LaunchStatus") ~= "loading" and session:GetAttribute("LaunchStatus") ~= "ready" then
+		inspectCampaigns(player)
+	elseif session:GetAttribute("LaunchStatus") ~= "loading" and typeof(action) == "string" and typeof(map) == "string" then
+		local selected = saves:selectCampaign(map, action, confirmed == true)
+		if selected then enterWorkshop(selected) end
+	end
+end)
+
+local function watchPlayer(player)
+	if not workshopOwner and not world and session:GetAttribute("LaunchMode") == "menu" then inspectCampaigns(player) end
+	saves:watch(player)
+	if world then
+		placePlayer(player, world.spawns[(#Players:GetPlayers() - 1) % #world.spawns + 1])
+	end
+	player.CharacterRemoving:Connect(function() release(player) end)
+end
+
 session.Parent = ReplicatedStorage
 saves:bindToClose()
 Players.PlayerAdded:Connect(watchPlayer)
@@ -822,9 +876,23 @@ Players.PlayerRemoving:Connect(function(player)
 	release(player)
 	equipment[player] = nil
 	task.spawn(function() saves:leaving(player) end)
-	for _, other in Players:GetPlayers() do if other ~= player then return end end
+	local remaining
+	for _, other in Players:GetPlayers() do
+		if other ~= player then remaining = other break end
+	end
+	if player == workshopOwner and session:GetAttribute("LaunchMode") == "menu" then
+		if world then
+			workshopReady = true
+			session:SetAttribute("LaunchReturn", nil)
+			refresh()
+			session:SetAttribute("LaunchMode", "playing")
+		else
+			inspectCampaigns(remaining)
+		end
+	end
+	if remaining then return end
 	if workshopReady then saves:checkpoint() end
-	task.spawn(function() saves:drain(saves.workshop) end)
+	task.spawn(function() saves:drain(saves.activeSlot) end)
 end)
 for _, player in Players:GetPlayers() do watchPlayer(player) end
-print("Garage Day · Atelier prêt")
+print("Garage Day · Menu prêt")

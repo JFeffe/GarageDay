@@ -1,6 +1,8 @@
 # Garage Day dans Roblox Studio
 
-Deux cartes issues de la version Godot sont disponibles. Le Petit Atelier a une baie. Le Tandem a deux ponts, deux places d’arrivée et deux stationnements de sortie. Au téléphone, **F** au clavier ou **Y** à la manette change de carte avant le premier service ou le soir. Tu conserves ton jour et la caisse.
+Deux cartes issues de la version Godot sont disponibles. Le Petit Atelier a une baie. Le Tandem a deux ponts, deux places d’arrivée et deux stationnements de sortie. Au lancement, sélectionne **Continuer** ou **Nouvelle partie** sur la carte de ton choix. Chaque carte affiche son jour et sa caisse. Une confirmation s’affiche avant de recommencer une carte qui a déjà une partie.
+
+Au téléphone, **F** au clavier ou **Y** à la manette rouvre ce menu avant le premier service, le soir ou après le bilan.
 
 Le planning à l’accueil affiche les rendez-vous et leur prix. Accueille chaque client, conduis son véhicule de la place d’arrivée au pont correspondant, fais les interventions, puis gare-le sur sa place de sortie et encaisse à la caisse. Au Tandem, les deux voitures peuvent rester à des étapes différentes et passer à la caisse dans l’ordre où tu termines leur réparation.
 
@@ -29,7 +31,7 @@ Le soir, vise un meuble et utilise l’invite **Déplacer ou pivoter**. Déplace
 
 ## Sauvegarde automatique
 
-Le jeu conserve le jour, le planning, les factures encaissées, la caisse, les achats à la caravane, les étoiles et le temps de patience restant. Il enregistre aussi la carte choisie et l’aménagement de chaque garage. À la reprise, les prochains clients dont la facture est ouverte reviennent à l’accueil. Si le service était terminé, la caravane reste disponible avec ses offres du soir. En coop, la progression appartient à l’atelier du premier joueur arrivé. Chaque joueur conserve son propre réglage de souris.
+Chaque carte a sa propre sauvegarde avec son jour, son planning, ses factures, sa caisse, ses achats, ses étoiles, sa patience et son aménagement. Une sauvegarde antérieure apparaît automatiquement sous la carte où la partie était enregistrée. À la reprise, les clients dont la facture est ouverte reviennent à l’accueil. En fin de service, la caravane retrouve ses offres du soir. En coop, le premier joueur arrivé choisit la partie et conserve la progression. Chaque joueur conserve son propre réglage de souris.
 
 Dans le fichier local de Studio, la sauvegarde passe par le plugin Garage Day - Sauvegarde locale. Sur une autre machine, place le fichier `Garage Day - Sauvegarde locale.rbxmx` généré par la compilation dans le dossier des plugins locaux de Studio, puis relance Studio. Une expérience hébergée utilise les Data Stores Roblox. Les essais dans une expérience publiée depuis Studio utilisent un espace de stockage dédié. [Documentation des Data Stores Roblox](https://create.roblox.com/docs/cloud-services/data-stores)
 
@@ -45,7 +47,7 @@ Au volant, la caméra passe derrière la berline. Utilise **WASD** ou les flèch
 
 ## Ouvrir et tester
 
-Ouvre `build/roblox/Garage Day.rbxlx` dans Roblox Studio et clique sur **Play**. L’atelier s’installe au démarrage du test. Pour une partie à deux, choisis **Server & Clients** avec deux clients dans les modes de test de Studio. Chaque joueur a sa vue et les opérations sur la voiture sont partagées.
+Ouvre `build/roblox/Garage Day.rbxlx` dans Roblox Studio et clique sur **Play**. Choisis une partie à l’accueil pour charger l’atelier. Pour une partie à deux, choisis **Server & Clients** avec deux clients dans les modes de test de Studio. Chaque joueur a sa vue et les opérations sur la voiture sont partagées.
 
 Pour reconstruire le fichier depuis la racine, utilise Node.js et [Rojo](https://rojo.space/docs/v7/getting-started/installation/) 7.6 ou plus récent.
 

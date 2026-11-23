@@ -139,7 +139,7 @@ player.CharacterRemoving:Connect(closeMarket)
 
 local function refresh()
 	if not gui.Enabled then return end
-	if session:GetAttribute("Phase") ~= "vendor" then closeMarket() return end
+	if session:GetAttribute("LaunchMode") ~= "playing" or session:GetAttribute("Phase") ~= "vendor" then closeMarket() return end
 	local cash = session:GetAttribute("Cash") or 0
 	till.Text = string.format("Jour %d · Disponible %d $", session:GetAttribute("Day") or 0, cash)
 	local offers = 0
@@ -168,7 +168,7 @@ session.AttributeChanged:Connect(refresh)
 
 remote.OnClientEvent:Connect(function(action, success, message)
 	if action == "open" then
-		if session:GetAttribute("Phase") ~= "vendor" then return end
+		if session:GetAttribute("LaunchMode") ~= "playing" or session:GetAttribute("Phase") ~= "vendor" then return end
 		feedback.Text = ""
 		gui.Enabled = true
 		playerGui:SetAttribute("CaravaneOpen", true)

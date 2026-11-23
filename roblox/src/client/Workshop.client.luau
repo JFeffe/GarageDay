@@ -9,7 +9,6 @@ local modules = ReplicatedStorage:WaitForChild("GarageDay")
 local Repair = require(modules:WaitForChild("Repair"))
 local Service = require(modules:WaitForChild("Service"))
 local playerGui = player:WaitForChild("PlayerGui")
-player.CameraMode = Enum.CameraMode.LockFirstPerson
 StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
 StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 
@@ -259,6 +258,13 @@ end
 
 local displayed
 local function refresh()
+	local playing = session:GetAttribute("LaunchMode") == "playing"
+	gui.Enabled = playing
+	if not playing then
+		reticleGui.Enabled = false
+		bindDrop(false)
+		return
+	end
 	local servicePhase = session:GetAttribute("Phase") or "free"
 	local bay = focusedBay()
 	displayed = bay
@@ -320,7 +326,7 @@ local function refresh()
 	action.Text, hint.Text = description[1], description[2]
 	local saveStatus = session:GetAttribute("SaveState")
 	if phase == "free" then
-		hint.Text = "Téléphone du bureau · " .. alternate .. " changer de carte."
+		hint.Text = "Téléphone du bureau · " .. alternate .. " choisir une partie."
 		if saveStatus == "loading" then
 			action.Text, hint.Text = "Chargement de l’atelier…", "Récupération de ta dernière journée."
 		end

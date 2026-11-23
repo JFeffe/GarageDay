@@ -86,6 +86,37 @@ damaged.orders[1].jobs[1] = "unknown"
 local untouched = newService()
 assert(not Service.restore(untouched, damaged) and untouched.day == 0 and untouched.cash == 0)
 
+local function choose(campaigns: Service.Campaigns, map: string, action: string, confirmed: boolean?)
+	return Service.chooseCampaign(campaigns, map, action, confirmed == true, finished.catalog, finished.pick)
+end
+
+local old: any = Service.snapshot(finished)
+old.map = nil
+old.furniture.PetitAtelier = { plant = { x = 2, z = 11, turn = 1 } }
+local campaigns = assert(Service.readCampaigns(old, finished.catalog, finished.pick))
+assert(campaigns.PetitAtelier.data == old and campaigns.PetitAtelier.day == 2 and campaigns.PetitAtelier.cash == finished.cash)
+assert(campaigns.Tandem == nil and not choose(campaigns, "Tandem", "continue"))
+assert(not choose(campaigns, "PetitAtelier", "new") and not choose(campaigns, "inconnue", "new"))
+local original = assert(choose(campaigns, "PetitAtelier", "continue"))
+assert(original.map == "PetitAtelier" and original.purchases.impact and original.activeServices.advertising)
+assert(original.furniture.PetitAtelier.plant.turn == 1 and #original.orders == 3)
+local tandem = assert(choose(campaigns, "Tandem", "new"))
+assert(tandem.map == "Tandem" and tandem.day == 0 and tandem.cash == 0 and next(tandem.purchases) == nil)
+local data = Service.saveCampaign(campaigns, tandem)
+assert(data.campaigns.PetitAtelier == old and data.campaigns.Tandem.map == "Tandem")
+assert(Service.open(tandem))
+payment(tandem)
+local profiles = assert(Service.readCampaigns(Service.saveCampaign(campaigns, tandem), finished.catalog, finished.pick))
+local continued = assert(choose(profiles, "Tandem", "continue"))
+assert(continued.day == 1 and continued.cash == tandem.cash and continued.orders[1].paid)
+local reset = assert(choose(profiles, "Tandem", "new", true))
+local resetProfiles = assert(Service.readCampaigns(Service.saveCampaign(profiles, reset), finished.catalog, finished.pick))
+assert(resetProfiles.Tandem.day == 0 and resetProfiles.Tandem.cash == 0 and resetProfiles.PetitAtelier.data == old)
+assert(not Service.readCampaigns({ version = 2, campaigns = { PetitAtelier = data.campaigns.Tandem } }, finished.catalog, finished.pick))
+assert(not Service.readCampaigns({ version = 3 }, finished.catalog, finished.pick))
+local migratedTandem = assert(Service.readCampaigns(Service.snapshot(finished), finished.catalog, finished.pick))
+assert(migratedTandem.Tandem.day == 2 and migratedTandem.PetitAtelier == nil)
+
 assert(Preferences.sensitivity(55) == Preferences.defaultSensitivity)
 assert(Preferences.sensitivity(73) == 75 and Preferences.sensitivity(0) == 20 and Preferences.sensitivity(900) == 130)
 assert(Preferences.sensitivity("80") == nil and Preferences.sensitivity(0/0) == nil and Preferences.sensitivity(math.huge) == nil)
@@ -144,4 +175,4 @@ records.future = { version = 2 }
 local future = slot("future")
 assert(future:load() == nil and not future:queue({ cash = 0 }) and records.future.version == 2)
 
-print("PASS sauvegarde Roblox — reprise du jour et du marché, caisse et achats, valeurs options, erreur réseau et session concurrente.")
+print("PASS sauvegarde Roblox — migration, parties distinctes, reprise, remplacement confirmé, caisse et achats, options, erreur réseau et accès concurrent.")

@@ -18,6 +18,8 @@ export type State = {
 	offers: { string }, rerolled: boolean, extraBooked: boolean, rating: number, guaranteeUsed: boolean,
 	map: string, furniture: { [string]: { [string]: Placement } }, grades: { [string]: number },
 }
+type Campaign = { data: any, day: number, cash: number, complete: boolean }
+export type Campaigns = { [string]: Campaign }
 
 local Service = {}
 local quotas = { 2, 2, 3, 3, 4, 4, 5, 5, 6, 7 }
@@ -529,6 +531,49 @@ function Service.restore(state: State, saved: any): boolean
 		end
 	end
 	return true
+end
+
+local function campaign(state: State, data: any): Campaign
+	return { data = data, day = state.day, cash = state.cash, complete = state.phase == "complete" }
+end
+
+function Service.readCampaigns(saved: any, catalog: Catalog, pick: (number) -> number): Campaigns?
+	if saved == nil then return {} end
+	if type(saved) ~= "table" then return nil end
+	if saved.version == 1 then
+		local state = Service.new(catalog, pick)
+		if not Service.restore(state, saved) then return nil end
+		return { [state.map] = campaign(state, saved) }
+	end
+	if saved.version ~= 2 or type(saved.campaigns) ~= "table" then return nil end
+	local campaigns: Campaigns = {}
+	for map, snapshot in saved.campaigns do
+		if type(map) ~= "string" or not table.find(Service.maps, map) then return nil end
+		local state = Service.new(catalog, pick)
+		if not Service.restore(state, snapshot) or state.map ~= map then return nil end
+		campaigns[map] = campaign(state, snapshot)
+	end
+	return campaigns
+end
+
+function Service.saveCampaign(campaigns: Campaigns, state: State)
+	campaigns[state.map] = campaign(state, Service.snapshot(state))
+	local snapshots: { [string]: any } = {}
+	for map, entry in campaigns do snapshots[map] = entry.data end
+	return { version = 2, campaigns = snapshots }
+end
+
+function Service.chooseCampaign(campaigns: Campaigns, map: string, action: string, confirmed: boolean, catalog: Catalog, pick: (number) -> number): State?
+	if not table.find(Service.maps, map) then return nil end
+	local entry = campaigns[map]
+	local state = Service.new(catalog, pick)
+	if action == "continue" then
+		if not entry or not Service.restore(state, entry.data) then return nil end
+	elseif action == "new" then
+		if entry and not confirmed then return nil end
+		state.map = map
+	else return nil end
+	return state
 end
 
 return Service
