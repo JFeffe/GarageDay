@@ -65,31 +65,68 @@ assert(jobCount == 16 and cases == 80)
 for id in Repair.tools do assert(allTools[id], id) end
 for id in Repair.cargo do assert(allCargo[id], id) end
 
+local function available(repair: Repair.State, action: string, target: string?, cargo: string?): Repair.Step?
+	for _, step in Repair.available(repair) do
+		if step.action == action and (not target or step.target == target) and (not cargo or step.cargo == cargo) then return step end
+	end
+	return nil
+end
+
 local tires = Repair.new("tires")
+local wheels = { "BackRight", "FrontRight", "BackLeft", "FrontLeft" }
+assert(Repair.canChooseJob(tires))
+local lower = tires.steps[#tires.steps]
 runStep(tires, mechanic)
+assert(tires.raised and not Repair.canChooseJob(tires) and #Repair.available(tires) == 4)
+assert(not available(tires, "removeWheel") and not available(tires, "mountWheel"))
 assert(Repair.takeTool(tires, mechanic, "impact") and not Repair.take(tires, mechanic, "newTire"))
+for _, wheel in wheels do
+	local step = assert(available(tires, "loosen", wheel))
+	assert(Repair.act(tires, mechanic, step) and not Repair.act(tires, mechanic, step))
+end
+for index = 1, 3 do
+	local step = assert(available(tires, "removeWheel", wheels[index]))
+	assert(Repair.act(tires, mechanic, step) and Repair.using(tires, mechanic) == "impact")
+	assert(not Repair.take(tires, mechanic, "usedTire_" .. wheels[index]))
+end
+assert(Repair.returnTool(tires, mechanic, "impact") and Repair.take(tires, mechanic, "newTire"))
+assert(Repair.act(tires, mechanic, assert(available(tires, "removeWheel", "FrontLeft"))))
+for _, wheel in wheels do
+	assert(tires.wheels[wheel] == "removed" and Repair.source(tires, "usedTire_" .. wheel) == "Floor" .. wheel)
+end
+assert(Repair.carrying(tires, mechanic) == "newTire" and not Repair.take(tires, mechanic, "usedTire_FrontLeft"))
+assert(not Repair.act(tires, mechanic, lower))
+assert(Repair.act(tires, mechanic, assert(available(tires, "mountWheel", "FrontRight"))))
+assert(Repair.source(tires, "usedTire_FrontRight") == "FloorFrontRight")
+
+local used = "usedTire_FrontLeft"
+assert(Repair.take(tires, assistant, used))
+assert(not Repair.take(tires, assistant, "newTire") and not Repair.takeTool(tires, assistant, "impact"))
+assert(Repair.drop(tires, assistant, "Counter1") == used and Repair.source(tires, used) == "Counter1")
+assert(Repair.take(tires, mechanic, used))
 Repair.release(tires, mechanic)
-runStep(tires, mechanic)
-runStep(tires, mechanic)
-assert(tires.raised and tires.wheels.FrontLeft == "removed")
-assert(Repair.source(tires, "usedTire") == "FloorFrontLeft")
-assert(Repair.take(tires, assistant, "usedTire"))
-assert(not Repair.take(tires, assistant, "newTire"))
-assert(not Repair.takeTool(tires, assistant, "impact"))
-assert(not Repair.act(tires, mechanic, "recycle_usedTire"))
-assert(Repair.drop(tires, assistant, "Counter1") == "usedTire")
-assert(Repair.source(tires, "usedTire") == "Counter1")
-assert(Repair.take(tires, mechanic, "usedTire"))
-Repair.release(tires, mechanic)
-assert(Repair.using(tires, mechanic) == nil and Repair.source(tires, "usedTire") == "Recovery")
-assert(Repair.take(tires, assistant, "usedTire"))
-assert(Repair.drop(tires, assistant, "Ground") == "usedTire")
-assert(Repair.source(tires, "usedTire") == "Ground")
-runStep(tires, assistant)
-runStep(tires, assistant)
-runStep(tires, mechanic)
+assert(Repair.source(tires, used) == "Recovery")
+assert(Repair.take(tires, assistant, used))
+assert(Repair.drop(tires, assistant, "Ground") == used and Repair.source(tires, used) == "Ground")
+
+for _, wheel in { "FrontLeft", "BackRight", "BackLeft" } do
+	assert(Repair.take(tires, mechanic, "newTire"))
+	assert(Repair.act(tires, mechanic, assert(available(tires, "mountWheel", wheel))))
+end
+assert(Repair.takeTool(tires, mechanic, "impact"))
+for _, wheel in wheels do
+	assert(Repair.act(tires, mechanic, assert(available(tires, "tighten", wheel))))
+	assert(tires.wheels[wheel] == "new")
+end
+assert(not available(tires, "lower"))
+for _, wheel in { "BackLeft", "FrontLeft", "BackRight", "FrontRight" } do
+	local item = "usedTire_" .. wheel
+	local recycling = assert(available(tires, "recycle_usedTire", "TireBin", item))
+	assert(not Repair.act(tires, mechanic, recycling))
+	assert(Repair.take(tires, assistant, item) and Repair.act(tires, assistant, recycling))
+end
+assert(available(tires, "lower") == lower)
 finish(tires)
-for _, wheel in Repair.wheels do assert(tires.wheels[wheel] == "new") end
 
 local puncture = Repair.new("puncture", { wheel = "BackRight" })
 for _ = 1, 3 do runStep(puncture, mechanic) end
@@ -246,6 +283,22 @@ assert(Service.hold(quote, 2, "reception", false) == 1)
 quote.cash, quote.phase, quote.offers = 0, "vendor", {"lift"}
 assert(not Service.buy(quote, "lift") and not Service.buy(quote, "unknown") and not Service.reroll(quote))
 
+local workOrder = Service.new(Repair.jobs, random(53))
+assert(Service.open(workOrder))
+Service.arrived(workOrder)
+assert(Service.receive(workOrder))
+park(workOrder)
+local pending = assert(Service.current(workOrder))
+pending.jobs, pending.estimate = { "oil", "tires", "wipers" }, Repair.jobs.oil.amount + Repair.jobs.tires.amount + Repair.jobs.wipers.amount
+assert(Service.selectRepair(workOrder, "wipers") and not Service.selectRepair(workOrder, "unknown"))
+assert(not Service.finishRepair(workOrder, "oil", true, false, 0, false))
+assert(Service.finishRepair(workOrder, "wipers", true, false, 0, false))
+assert(not Service.selectRepair(workOrder, "wipers") and Service.selectRepair(workOrder, "tires"))
+assert(Service.finishRepair(workOrder, "tires", true, false, 0, false))
+assert(workOrder.phase == "repair" and pending.jobs[workOrder.repairIndex] == "oil")
+assert(Service.finishRepair(workOrder, "oil", true, false, 0, false))
+assert(workOrder.phase == "outbound" and pending.amount == pending.estimate and not Service.selectRepair(workOrder, "oil"))
+
 local tandem = Service.new(Repair.jobs, random(95))
 local lanes = { Service.newLane(), Service.newLane() }
 assert(Service.selectMap(tandem, "Tandem"))
@@ -298,4 +351,4 @@ assert(not Service.open(tandem) and Service.finishCampaign(tandem))
 local restored = Service.new(Repair.jobs, random(1))
 assert(Service.restore(restored, Service.snapshot(tandem)) and restored.phase == "complete")
 
-print("PASS Roblox — 16 réparations et 80 variantes, une seule prise à la fois, dix jours sur chaque carte, deux baies indépendantes, patience, étoiles, factures et caravane.")
+print("PASS Roblox — ordre des interventions, quatre roues indépendantes, une seule prise à la fois, 16 réparations et 80 variantes, dix jours sur chaque carte.")

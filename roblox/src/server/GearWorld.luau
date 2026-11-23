@@ -158,7 +158,7 @@ local function buildTemplates(world, part, cloneMesh)
 end
 
 function Gear.place(world, key, parent, pose)
-	local gear = world.gearTemplates[key]:Clone()
+	local gear = world.gearTemplates[Repair.assetKey(key)]:Clone()
 	gear.Parent = parent
 	gear:PivotTo(pose)
 	return gear
@@ -249,7 +249,7 @@ function Gear.build(world, part, cloneMesh, target, sign, model)
 		sign(world.targets[key], label, 1.05, 38)
 	end
 	world.scrapVisuals = {}
-	for i = 1, 3 do
+	for i = 1, #Repair.wheels do
 		local pose = CFrame.new(tireBin + Vector3.new(0, 0.67 + (i - 1) * 0.34, 0)) * zUp
 		local wheel = Gear.place(world, "usedTire", world.room, pose)
 		wheel.Parent = nil
@@ -291,7 +291,7 @@ function Gear.toss(world, key, from, to)
 end
 
 function Gear.recycle(world, item)
-	if item ~= "serviceWheel" and item ~= "usedTire" then return end
+	if not Repair.isWheel(item) then return end
 	world.recycled = math.min(#world.scrapVisuals, world.recycled + 1)
 	world.scrapVisuals[world.recycled].Parent = world.room
 end
@@ -342,7 +342,7 @@ function Gear.sync(world, repair)
 			local pose = if location == "Ground" or location == "Workpiece" then world.drops[key] else world.slots[location]
 			if shared then pose = shared.WorldCFrame - Vector3.yAxis * 0.4 end
 			pose = pose or world.targets.Recovery.WorldCFrame - Vector3.yAxis * 0.4
-			local wheel = key == "newTire" or key == "usedTire" or key == "serviceWheel"
+			local wheel = Repair.isWheel(key)
 			if wheel and location ~= "WheelStand" then pose *= zUp end
 			local visual = Gear.place(world, key, world.room, pose)
 			local origin = world.pieceMotion[key]
@@ -361,7 +361,8 @@ function Gear.equipment(world, key, title)
 	local tool = Instance.new("Tool")
 	tool.Name = title
 	tool.CanBeDropped = false
-	tool:SetAttribute("GearKey", key)
+	local asset = Repair.assetKey(key)
+	tool:SetAttribute("GearKey", asset)
 	tool:SetAttribute("TwoHanded", Repair.cargo[key] ~= nil and Repair.cargo[key].large == true)
 	tool.Grip = CFrame.new(0, 0.09, -0.16) * CFrame.Angles(0, math.pi / 2, 0)
 
@@ -375,7 +376,7 @@ function Gear.equipment(world, key, title)
 	handle.Massless = true
 	handle.Parent = tool
 
-	local visual = world.gearTemplates[key]:Clone()
+	local visual = world.gearTemplates[asset]:Clone()
 	visual.Name = "HeldGeometry"
 	visual.Parent = tool
 	for _, piece in visual:GetChildren() do

@@ -291,7 +291,7 @@ local function refresh()
 	local heldKey = player:GetAttribute("GarageHeldKey")
 	local object = heldKey and (Repair.cargo[heldKey] or Repair.tools[heldKey])
 	local arranging = hand == "furniture"
-	local modal = playerGui:GetAttribute("CaravaneOpen") or playerGui:GetAttribute("WorkshopOptionsOpen")
+	local modal = playerGui:GetAttribute("CaravaneOpen") or playerGui:GetAttribute("WorkshopOptionsOpen") or playerGui:GetAttribute("RepairChoiceOpen")
 	local alternate = if input == Enum.PreferredInput.Gamepad then "Y" elseif input == Enum.PreferredInput.Touch then "l’action de choix" else "F"
 
 	mapName.Text = string.upper(session:GetAttribute("MapName") or "Garage Day")
@@ -352,6 +352,10 @@ local function refresh()
 		local motion = motionHelp[value("Motion", "")]
 		if motion and value("Moving") then
 			action.Text, hint.Text = motion[1], motion[2]
+		elseif job == Repair.jobs.tires and value("AvailableActions", 0) > 1 then
+			action.Text = "Remplacer les pneus"
+			hint.Text = if hand then "Choisis une roue. Pose ce que tu tiens avant d’en ramasser une."
+				else "Les gestes disponibles s’affichent à chaque roue. La clé à choc sert au desserrage et au serrage."
 		elseif hand and (value("NeedsEmptyHands") or (toolKey and toolOwner ~= player.UserId) or (cargo and owner ~= player.UserId)) then
 			hint.Text = "Pose d’abord ce que tu tiens."
 		elseif toolKey and toolOwner ~= player.UserId then
@@ -370,6 +374,7 @@ local function refresh()
 		else
 			hint.Text = targetHelp[value("Target", "")] or "Approche-toi du point indiqué."
 		end
+		if value("CanChooseRepair") then hint.Text ..= "\n" .. alternate .. " au véhicule pour choisir l’intervention." end
 	elseif evening then
 		orderLine.Text = string.format("Recette du jour · %d $", session:GetAttribute("DailyCash") or 0)
 		if phase == "vendor" and day >= Service.lastDay then hint.Text = "Le téléphone affiche le bilan. La caravane est encore ouverte." end
@@ -411,6 +416,7 @@ end
 session.AttributeChanged:Connect(refresh)
 playerGui:GetAttributeChangedSignal("CaravaneOpen"):Connect(refresh)
 playerGui:GetAttributeChangedSignal("WorkshopOptionsOpen"):Connect(refresh)
+playerGui:GetAttributeChangedSignal("RepairChoiceOpen"):Connect(refresh)
 UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(refresh)
 task.spawn(function()
 	while gui.Parent do

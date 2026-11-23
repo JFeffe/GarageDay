@@ -10,15 +10,17 @@ export type Step = {
 	tool: string?, cargo: string?, output: string?, leaveAt: string?, storeAt: string?, motion: Motion?,
 	wheel: string?, wheelState: ("removed" | "installed" | "new")?, component: string?, componentState: ("removed" | "new")?,
 	note: string?, reading: number?, quote: ("battery" | "window")?, rate: string?,
+	after: { Step }?,
 }
 type ToolSpec = { name: string, target: string }
-type CargoSpec = { name: string, target: string?, hint: string, large: boolean? }
+type CargoSpec = { name: string, target: string?, hint: string, large: boolean?, asset: string? }
 type JobSpec = { name: string, amount: number, unlock: number, steps: (Faults) -> { Step } }
 export type State = {
 	job: string, steps: { Step }, index: number, tools: { [string]: number }, carried: { [string]: number },
 	placements: { [string]: string }, moving: boolean, raised: boolean, hoodOpen: boolean,
 	wheels: { [string]: string }, components: { [string]: string },
 	note: string, pressure: number?, billable: boolean, addBattery: boolean, surcharge: number,
+	done: { [Step]: boolean }, motionStep: Step?,
 }
 
 local Repair = {}
@@ -44,7 +46,6 @@ local cargo: { [string]: CargoSpec } = {
 	oldBattery = { name = "Batterie usée", hint = "Ramasse la batterie déposée.", large = true },
 	newBattery = { name = "Batterie neuve", target = "BatteryStock", hint = "Prends une batterie au rayon ÉLECTRICITÉ.", large = true },
 	newTire = { name = "Roue neuve", target = "TireRack", hint = "Prends une roue neuve au rack ou au chariot.", large = true },
-	usedTire = { name = "Roue usée", hint = "Ramasse la roue déposée et amène-la au recyclage.", large = true },
 	serviceWheel = { name = "Roue du client", hint = "Reprends la roue du client à l’endroit où elle a été déposée.", large = true },
 	patch = { name = "Rustine", target = "PatchStock", hint = "Prends une rustine au rayon CHÂSSIS." },
 	newBearing = { name = "Roulement neuf", target = "BearingStock", hint = "Prends un roulement au rayon CHÂSSIS." },
@@ -65,8 +66,6 @@ local cargo: { [string]: CargoSpec } = {
 	newWindow = { name = "Module de vitre neuf", target = "WindowStock", hint = "Prends un module au rayon ÉLECTRICITÉ." },
 	oldWindow = { name = "Module de vitre usé", hint = "Ramasse le module retiré." },
 }
-Repair.cargo = table.freeze(cargo)
-
 local raise: Step = { action = "raise", title = "Lever le pont", target = "Lever", hold = 0, motion = "raise" }
 local lower: Step = { action = "lower", title = "Abaisser le pont", target = "Lever", hold = 0, motion = "lower" }
 local openHood: Step = { action = "openHood", title = "Ouvrir le capot", target = "Hood", hold = 0.25, motion = "openHood" }
@@ -75,6 +74,24 @@ local ignition: Step = { action = "ignition", title = "Tester le démarrage", ta
 local wheelNames: { [string]: string } = { FrontLeft = "avant gauche", FrontRight = "avant droite", BackLeft = "arrière gauche", BackRight = "arrière droite" }
 local allWheels = { "FrontLeft", "FrontRight", "BackLeft", "BackRight" }
 Repair.wheels = table.freeze(allWheels)
+for _, wheel in allWheels do
+	cargo["usedTire_" .. wheel] = {
+		name = "Roue usée · " .. wheelNames[wheel],
+		hint = "Ramasse la roue déposée et amène-la au recyclage.",
+		large = true, asset = "usedTire",
+	}
+end
+Repair.cargo = table.freeze(cargo)
+
+function Repair.assetKey(key: string): string
+	local spec = cargo[key]
+	return if spec and spec.asset then spec.asset else key
+end
+
+function Repair.isWheel(key: string): boolean
+	local asset = Repair.assetKey(key)
+	return asset == "newTire" or asset == "usedTire" or asset == "serviceWheel"
+end
 
 local function step(action: string, title: string, target: string, hold: number, spec: {[string]: any}?): Step
 	local result = (spec or {}) :: any
@@ -86,29 +103,29 @@ local function step(action: string, title: string, target: string, hold: number,
 end
 
 local function recycle(item: string, bin: string): Step
-	return step("recycle_" .. item, "Recycler · " .. cargo[item].name, bin, 0.45, { cargo = item })
+	return step("recycle_" .. Repair.assetKey(item), "Recycler · " .. cargo[item].name, bin, 0.45, { cargo = item })
 end
 
-local function wheelOff(line: { Step }, wheel: string, item: string)
+local function wheelOff(line: { Step }, wheel: string, item: string): (Step, Step)
 	local side = wheelNames[wheel]
-	table.insert(line, step("loosen", "Desserrer · " .. side, wheel, 0.65, { tool = "impact", rate = "impact" }))
-	table.insert(line, step("removeWheel", "Déposer la roue · " .. side, wheel, 0.42, {
+	local loosen = step("loosen", "Desserrer · " .. side, wheel, 0.65, { tool = "impact", rate = "impact" })
+	local remove = step("removeWheel", "Déposer la roue · " .. side, wheel, 0.42, {
 		wheel = wheel, wheelState = "removed", output = item, leaveAt = "Floor" .. wheel,
-	}))
+	})
+	table.insert(line, loosen)
+	table.insert(line, remove)
+	return loosen, remove
 end
 
-local function wheelOn(line: { Step }, wheel: string, item: string)
+local function wheelOn(line: { Step }, wheel: string, item: string): (Step, Step)
 	local side = wheelNames[wheel]
-	table.insert(line, step("mountWheel", "Remonter la roue · " .. side, wheel, 0.48, {
+	local mount = step("mountWheel", "Remonter la roue · " .. side, wheel, 0.48, {
 		wheel = wheel, wheelState = if item == "newTire" then "new" else "installed", cargo = item,
-	}))
-	table.insert(line, step("tighten", "Serrer · " .. side, wheel, 0.65, { tool = "impact", rate = "impact" }))
-end
-
-local function loadedWheel(line: { Step }, wheel: string)
-	wheelOff(line, wheel, "usedTire")
-	table.insert(line, recycle("usedTire", "TireBin"))
-	wheelOn(line, wheel, "newTire")
+	})
+	local tighten = step("tighten", "Serrer · " .. side, wheel, 0.65, { tool = "impact", rate = "impact" })
+	table.insert(line, mount)
+	table.insert(line, tighten)
+	return mount, tighten
 end
 
 local function suspendWheel(line: { Step }, wheel: string, location: string)
@@ -127,8 +144,21 @@ end
 local jobs: { [string]: JobSpec } = {
 	tires = { name = "Pneus", amount = 40, unlock = 1, steps = function()
 		local line = { raise }
-		for _, wheel in allWheels do loadedWheel(line, wheel) end
-		table.insert(line, lower)
+		local finishedWheels = {}
+		for _, wheel in allWheels do
+			local item = "usedTire_" .. wheel
+			local loosen, remove = wheelOff(line, wheel, item)
+			loosen.after = { raise }
+			local discard = recycle(item, "TireBin")
+			table.insert(line, discard)
+			local mount, tighten = wheelOn(line, wheel, "newTire")
+			mount.after = { remove }
+			table.insert(finishedWheels, discard)
+			table.insert(finishedWheels, tighten)
+		end
+		local finish = table.clone(lower)
+		finish.after = finishedWheels
+		table.insert(line, finish)
 		return line
 	end },
 	brakes = { name = "Plaquettes", amount = 48, unlock = 2, steps = function()
@@ -281,11 +311,39 @@ Repair.jobs = table.freeze(jobs)
 function Repair.new(job: string, faults: Faults?, toolOwners: { [string]: number }?): State
 	return { job = job, steps = jobs[job].steps(faults or {}), index = 1, tools = toolOwners or {}, carried = {}, placements = {},
 		moving = false, raised = false, hoodOpen = false, wheels = {}, components = {}, note = "", pressure = nil,
-		billable = true, addBattery = false, surcharge = 0 }
+		billable = true, addBattery = false, surcharge = 0, done = {} }
+end
+
+local function ready(state: State, step: Step, index: number): boolean
+	if state.done[step] or state.index > #state.steps then return false end
+	if step.after then
+		for _, prerequisite in step.after do
+			if not state.done[prerequisite] then return false end
+		end
+		return true
+	end
+	return index == 1 or state.done[state.steps[index - 1]] == true
+end
+
+function Repair.available(state: State): { Step }
+	if state.motionStep then return { state.motionStep } end
+	local available = {}
+	for index, step in state.steps do
+		if ready(state, step, index) then table.insert(available, step) end
+	end
+	return available
 end
 
 function Repair.current(state: State): Step?
-	return state.steps[state.index]
+	if state.motionStep then return state.motionStep end
+	for index, step in state.steps do
+		if ready(state, step, index) then return step end
+	end
+	return nil
+end
+
+function Repair.canChooseJob(state: State): boolean
+	return state.index == 1 and not state.moving and next(state.carried) == nil and next(state.placements) == nil
 end
 
 function Repair.carrying(state: State, playerId: number): string?
@@ -304,8 +362,8 @@ end
 
 function Repair.canTakeTool(state: State, key: string): boolean
 	if state.tools[key] then return false end
-	for i = state.index, #state.steps do
-		if state.steps[i].tool == key then return true end
+	for _, step in state.steps do
+		if not state.done[step] and step.tool == key then return state.index <= #state.steps end
 	end
 	return false
 end
@@ -324,16 +382,20 @@ function Repair.returnTool(state: State, playerId: number, key: string): boolean
 end
 
 function Repair.source(state: State, item: string): string?
-	if state.carried[item] then return nil end
-	local current = Repair.current(state)
+	local spec = cargo[item]
+	if not spec or state.carried[item] then return nil end
 	local location = state.placements[item]
 	if location then
-		if not cargo[item].target and location ~= "Ground" and location ~= "Recovery" and (not current or current.cargo ~= item) then return nil end
-		return location
+		if spec.target or location == "Ground" or location == "Recovery" then return location end
+		for _, step in Repair.available(state) do
+			if step.cargo == item then return location end
+		end
+		return nil
 	end
-	local stock = cargo[item].target
-	if stock then
-		for i = state.index, #state.steps do if state.steps[i].cargo == item then return stock end end
+	if spec.target and state.index <= #state.steps then
+		for _, step in state.steps do
+			if step.cargo == item and not state.done[step] then return spec.target end
+		end
 	end
 	return nil
 end
@@ -355,17 +417,24 @@ function Repair.drop(state: State, playerId: number, place: string): string?
 end
 
 function Repair.needsEmptyHands(step: Step): boolean
-	return step.cargo == nil and step.tool == nil and step.output ~= nil
+	return step.cargo == nil and step.output ~= nil and step.leaveAt == nil
 end
 
-function Repair.act(state: State, playerId: number, action: string): boolean
-	local current = Repair.current(state)
-	if not current or state.moving or playerId == 0 or current.action ~= action then return false end
+function Repair.act(state: State, playerId: number, action: string | Step): boolean
+	if state.moving or playerId == 0 then return false end
+	local current = if type(action) == "string" then Repair.current(state) else action
+	if not current then return false end
+	if type(action) == "string" then
+		if current.action ~= action then return false end
+	else
+		local index = table.find(state.steps, current)
+		if not index or not ready(state, current, index) then return false end
+	end
 	if current.tool and state.tools[current.tool] ~= playerId then return false end
 	if current.cargo and state.carried[current.cargo] ~= playerId then return false end
 	if Repair.needsEmptyHands(current) and (Repair.carrying(state, playerId) or Repair.using(state, playerId)) then return false end
 	if current.motion then
-		state.moving = true
+		state.moving, state.motionStep = true, current
 		return true
 	end
 	if current.cargo then
@@ -382,6 +451,7 @@ function Repair.act(state: State, playerId: number, action: string): boolean
 	if current.quote == "battery" then state.addBattery = true end
 	if current.quote == "window" then state.surcharge = 18 end
 	if current.note then state.note = current.note end
+	state.done[current] = true
 	state.index += 1
 	return true
 end
@@ -396,12 +466,13 @@ function Repair.decline(state: State): boolean
 end
 
 function Repair.finishMotion(state: State)
-	if not state.moving then return end
-	local current = Repair.current(state)
-	local motion = if current then current.motion else nil
+	local current = state.motionStep
+	if not current then return end
+	local motion = current.motion
 	if motion == "raise" or motion == "lower" then state.raised = motion == "raise" end
 	if motion == "openHood" or motion == "closeHood" then state.hoodOpen = motion == "openHood" end
-	state.moving = false
+	state.moving, state.motionStep = false, nil
+	state.done[current] = true
 	state.index += 1
 end
 

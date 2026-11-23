@@ -157,6 +157,19 @@ function Service.park(state: Lane, playerId: number, aligned: boolean): boolean
 	return true
 end
 
+function Service.selectRepair(state: State, job: string, lane: Lane?): boolean
+	local active = lane or state
+	local order = Service.current(state, lane)
+	if active.phase ~= "repair" or not order then return false end
+	local position = table.find(order.jobs, job)
+	if not position or position < active.repairIndex then return false end
+	if position ~= active.repairIndex then
+		table.remove(order.jobs, position)
+		table.insert(order.jobs, active.repairIndex, job)
+	end
+	return true
+end
+
 function Service.finishRepair(state: State, job: string, billable: boolean, declined: boolean, surcharge: number, addBattery: boolean, lane: Lane?): boolean
 	local active = lane or state
 	local order = Service.current(state, lane)

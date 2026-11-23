@@ -167,7 +167,7 @@ updateStatus()
 local priority = Enum.ContextActionPriority.High.Value + 2
 local function setOpen(open)
 	if open and (session:GetAttribute("LaunchMode") ~= "playing" or playerGui:GetAttribute("CaravaneOpen") or player:GetAttribute("GarageDriverBay")
-		or player:GetAttribute("GarageHeldKind") == "furniture") then return end
+		or playerGui:GetAttribute("RepairChoiceOpen") or player:GetAttribute("GarageHeldKind") == "furniture") then return end
 	if backdrop.Visible == open then return end
 	backdrop.Visible, openButton.Visible = open, not open
 	playerGui:SetAttribute("WorkshopOptionsOpen", open)

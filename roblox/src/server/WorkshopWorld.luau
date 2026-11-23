@@ -602,7 +602,7 @@ function World.effect(world, step, root)
 		Gear.toss(world.root, "usedOil", CFrame.new(point + Vector3.yAxis * 0.53),
 			CFrame.new(point + Vector3.yAxis * 0.57) * CFrame.Angles(0.28, 0, 0.72))
 		World.sound(anchor, action)
-	elseif action:find("^recycle_") and step.cargo then
+	elseif (action:find("^recycle_") or action == "recyclePuncture") and step.cargo then
 		local point = anchor.WorldPosition
 		local direction = (point - root.Position) * Vector3.new(1, 0, 1)
 		local unit = if direction.Magnitude > 0.1 then direction.Unit else Vector3.xAxis

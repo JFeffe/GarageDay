@@ -23,7 +23,11 @@ Le tableau de service affiche la patience de chaque client. La note du jour part
 
 Prépare la clé à choc, le bac de vidange, la valise de diagnostic, le manomètre, le cliquet, la sonde ou l’extracteur selon la panne. Les pannes peuvent varier au sein d’une même intervention. Une crevaison peut demander une rustine ou le remplacement de la roue. Une inspection peut mener à un devis pour la batterie.
 
-Les roues se détachent du moyeu, s’enclenchent au remontage et basculent dans le bac de recyclage. Les pièces lourdes se portent à deux mains et ralentissent la marche. Le chariot transporte jusqu’à quatre roues neuves. Les bacs séparent l’huile usée, les pneus, les métaux et le recyclage courant. Le poste **OBJETS RÉCUPÉRÉS** permet de retrouver certaines pièces quand un joueur quitte.
+Avec plusieurs interventions sur le bon de travail, **F** près de la portière ou **Y** à la manette permet de choisir la prochaine. Ce choix revient entre deux interventions.
+
+Pour les pneus, chaque roue a ses propres gestes. Tu peux desserrer et déposer les quatre roues avant d’en remonter une, puis choisir l’ordre de remontage et de recyclage. Une roue desserrée tombe au sol même si tu tiens déjà un outil ou une pièce. Libère tes mains pour la ramasser et la transporter.
+
+Les pièces lourdes se portent à deux mains et ralentissent la marche. Le chariot transporte jusqu’à quatre roues neuves. Les bacs séparent l’huile usée, les pneus, les métaux et le recyclage courant. Le poste **OBJETS RÉCUPÉRÉS** permet de retrouver certaines pièces quand un joueur quitte.
 
 Après le dernier client, la caravane propose jusqu’à trois articles sur le parvis. La caisse sert à acheter des améliorations permanentes ou des services pour le lendemain. Le téléphone ouvre la journée suivante, puis affiche le bilan à la fin du jour 10.
 
