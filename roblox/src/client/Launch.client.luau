@@ -21,7 +21,15 @@ screen.Name = "AccueilGarageDay"
 screen.ResetOnSpawn = false
 screen.DisplayOrder = 16
 screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screen.Parent = player:WaitForChild("PlayerGui")
+local playerGui = player:WaitForChild("PlayerGui")
+screen.Parent = playerGui
+
+local backdrop = Instance.new("ScreenGui")
+backdrop.Name = "FondAccueilGarageDay"
+backdrop.ResetOnSpawn = false
+backdrop.DisplayOrder = 15
+backdrop.ScreenInsets = Enum.ScreenInsets.None
+backdrop.Parent = playerGui
 
 local function rectangle(parent, color, radius)
 	local frame = Instance.new("Frame")
@@ -75,7 +83,7 @@ local function button(parent, name, value, accent, command)
 	return item
 end
 
-local background = rectangle(screen, ink)
+local background = rectangle(backdrop, Color3.new(1, 1, 1))
 background.Size = UDim2.fromScale(1, 1)
 local gradient = Instance.new("UIGradient")
 gradient.Rotation = 108
@@ -94,7 +102,7 @@ scroll.ScrollBarThickness = 4
 scroll.ScrollBarImageColor3 = mint
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
-scroll.Parent = background
+scroll.Parent = screen
 local limit = Instance.new("UISizeConstraint")
 limit.MaxSize = Vector2.new(920, 680)
 limit.Parent = scroll
@@ -268,7 +276,7 @@ for index, choice in choices do
 	details.Position = UDim2.fromOffset(18, 208)
 	details.Size = UDim2.new(1, -36, 0, 23)
 	local progress = text(card, "", 15, cream, true)
-	progress.Position = UDim2.fromOffset(18, 247)
+	progress.Position = UDim2.fromOffset(18, 238)
 	progress.Size = UDim2.new(1, -36, 0, 23)
 	local resume = button(card, "Continuer", "Continuer", true, function()
 		control:FireServer("continue", choice.id)
@@ -291,7 +299,7 @@ end
 local mobile = false
 local function resize()
 	mobile = scroll.AbsoluteSize.X < 620
-	local height = 326
+	local height = 340
 	for _, entry in entries do
 		entry.card.Size = UDim2.new(if mobile then 1 else 0.5, if mobile then 0 else -7, 0, height)
 	end
@@ -306,6 +314,7 @@ local function setOpen(open)
 	if menuOpen == open then return end
 	menuOpen = open
 	screen.Enabled = open
+	backdrop.Enabled = open
 	local camera = workspace.CurrentCamera
 	if open then
 		promptsEnabled = ProximityPromptService.Enabled
