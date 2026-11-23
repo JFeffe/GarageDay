@@ -7,6 +7,11 @@ local mechanic, assistant, stranger = 1, 2, 99
 local function runStep(repair: Repair.State, actor: number)
 	local current = assert(Repair.current(repair))
 	assert(not Repair.act(repair, stranger, "outOfOrder"))
+	local held = Repair.using(repair, actor)
+	if held and (current.cargo or Repair.needsEmptyHands(current) or (current.tool and current.tool ~= held)) then
+		assert(not Repair.act(repair, actor, current.action))
+		assert(Repair.returnTool(repair, actor, held))
+	end
 	if current.tool then
 		assert(not Repair.act(repair, stranger, current.action))
 		if repair.tools[current.tool] ~= actor then assert(Repair.takeTool(repair, actor, current.tool)) end
@@ -62,8 +67,7 @@ for id in Repair.cargo do assert(allCargo[id], id) end
 
 local tires = Repair.new("tires")
 runStep(tires, mechanic)
-assert(Repair.takeTool(tires, mechanic, "impact") and Repair.take(tires, mechanic, "newTire"))
-assert(not Repair.act(tires, mechanic, "loosen"))
+assert(Repair.takeTool(tires, mechanic, "impact") and not Repair.take(tires, mechanic, "newTire"))
 Repair.release(tires, mechanic)
 runStep(tires, mechanic)
 runStep(tires, mechanic)
@@ -71,6 +75,7 @@ assert(tires.raised and tires.wheels.FrontLeft == "removed")
 assert(Repair.source(tires, "usedTire") == "FloorFrontLeft")
 assert(Repair.take(tires, assistant, "usedTire"))
 assert(not Repair.take(tires, assistant, "newTire"))
+assert(not Repair.takeTool(tires, assistant, "impact"))
 assert(not Repair.act(tires, mechanic, "recycle_usedTire"))
 assert(Repair.drop(tires, assistant, "Counter1") == "usedTire")
 assert(Repair.source(tires, "usedTire") == "Counter1")
@@ -102,8 +107,10 @@ for _ = 1, 4 do runStep(brakes, mechanic) end
 assert(brakes.placements.serviceWheel == "WheelStand")
 runStep(brakes, mechanic)
 assert(Repair.using(brakes, mechanic) == "ratchet" and Repair.using(brakes, assistant) == nil)
-assert(Repair.carrying(brakes, mechanic) == "oldPads")
-assert(Repair.drop(brakes, mechanic, "Ground") == "oldPads")
+assert(Repair.carrying(brakes, mechanic) == nil and Repair.source(brakes, "oldPads") == "Workpiece")
+assert(not Repair.take(brakes, mechanic, "oldPads"))
+assert(not Repair.takeTool(brakes, mechanic, "impact"))
+assert(Repair.take(brakes, assistant, "oldPads") and Repair.drop(brakes, assistant, "Ground") == "oldPads")
 runStep(brakes, assistant)
 finish(brakes)
 assert(brakes.components.PadsFrontLeft == "new" and brakes.components.PadsFrontRight == "new")
@@ -125,7 +132,7 @@ local function random(seed: number): (number) -> number
 	end
 end
 
-local function park(state: Service.State)
+local function park(state: Service.Lane)
 	assert(Service.beginDrive(state, mechanic))
 	assert(not Service.beginDrive(state, assistant))
 	assert(not Service.park(state, assistant, true) and not Service.park(state, mechanic, false))
@@ -161,7 +168,7 @@ assert(Service.open(alternate))
 local drawn = {}
 local permanentPurchased = {}
 local variation = false
-for day = 1, 12 do
+for day = 1, Service.lastDay do
 	assert(Service.open(state) and not Service.open(state))
 	local number = counts[math.min(day, #counts)] + (if state.activeServices.advertising then 1 else 0)
 	assert(state.day == day and #state.orders == number)
@@ -206,6 +213,9 @@ for day = 1, 12 do
 	end
 	assert(state.cash == state.totalEarned - state.spent)
 end
+assert(not Service.open(state) and state.day == 10 and state.phase == "vendor")
+assert(Service.finishCampaign(state) and state.phase == "complete" and not Service.open(state))
+for day = 1, Service.lastDay do assert(state.grades[tostring(day)] == 10) end
 assert(variation)
 for id in Repair.jobs do assert(drawn[id], id) end
 for id, offer in Service.offers do if not offer.temporary then assert(permanentPurchased[id], id) end end
@@ -213,7 +223,7 @@ for id, offer in Service.offers do if not offer.temporary then assert(permanentP
 local quote = Service.new(Repair.jobs, random(3))
 quote.phase = "repair"
 quote.orders = { {name = "QA", jobs = {"inspection", "window"}, vehicle = "Sedan", estimate = 61, amount = 0, paid = false,
-	late = false, patience = 1, snacks = 0, snackUntil = 0, lateSeconds = 0} }
+	late = false, patience = 1, patienceMax = 1, snacks = 0, snackUntil = 0, lateSeconds = 0} }
 local order = quote.orders[1]
 assert(Service.finishRepair(quote, "inspection", true, false, 0, true))
 assert(order.amount == 30 and order.estimate == 106 and order.jobs[3] == "battery")
@@ -236,4 +246,56 @@ assert(Service.hold(quote, 2, "reception", false) == 1)
 quote.cash, quote.phase, quote.offers = 0, "vendor", {"lift"}
 assert(not Service.buy(quote, "lift") and not Service.buy(quote, "unknown") and not Service.reroll(quote))
 
-print("PASS Roblox — 16 réparations et 80 variantes d’essai, tous les outils et composants, charge et dépose, commandes aléatoires, facturation et caravane.")
+local tandem = Service.new(Repair.jobs, random(95))
+local lanes = { Service.newLane(), Service.newLane() }
+assert(Service.selectMap(tandem, "Tandem"))
+for day = 1, Service.lastDay do
+	assert(Service.open(tandem))
+	tandem.phase = "service"
+	assert(not Service.selectMap(tandem, "PetitAtelier"))
+	while tandem.served < #tandem.orders do
+		for _, lane in lanes do
+			if Service.dispatch(tandem, lanes, lane) then
+				Service.arrived(lane)
+				assert(Service.receive(lane))
+				park(lane)
+			end
+		end
+		if day == 1 then
+			local first, second = assert(Service.current(tandem, lanes[1])), assert(Service.current(tandem, lanes[2]))
+			assert(first ~= second)
+			assert(Service.passTime(tandem, 1000, 1000, lanes[2]))
+			assert(second.late and not first.late and tandem.rating == 0)
+		end
+		for i = #lanes, 1, -1 do
+			local lane = lanes[i]
+			local active = Service.current(tandem, lane)
+			if active then
+				for _, id in active.jobs do
+					local repair = Repair.new(id)
+					finish(repair)
+					assert(Service.finishRepair(tandem, id, repair.billable, false, repair.surcharge, repair.addBattery, lane))
+				end
+				park(lane)
+				Service.readyToPay(lane)
+				assert(Service.pay(tandem, lane) and not Service.pay(tandem, lane))
+				if day == 1 and i == 2 then
+					local restored = Service.new(Repair.jobs, random(95))
+					assert(Service.restore(restored, Service.snapshot(tandem)))
+					assert(restored.served == 1 and restored.ticket == 1 and restored.orders[2].late
+						and restored.orders[2].paid and not restored.orders[1].paid and restored.map == "Tandem")
+				end
+				assert(not Service.closeShift(tandem, lanes))
+				Service.clearLane(lane)
+			end
+		end
+	end
+	assert(Service.closeShift(tandem, lanes) and Service.openMarket(tandem))
+	assert(tandem.day == day and tandem.cash > 0)
+end
+assert(tandem.grades["1"] == 0 and tandem.grades["2"] == 10 and tandem.day == 10)
+assert(not Service.open(tandem) and Service.finishCampaign(tandem))
+local restored = Service.new(Repair.jobs, random(1))
+assert(Service.restore(restored, Service.snapshot(tandem)) and restored.phase == "complete")
+
+print("PASS Roblox — 16 réparations et 80 variantes, une seule prise à la fois, dix jours sur chaque carte, deux baies indépendantes, patience, étoiles, factures et caravane.")

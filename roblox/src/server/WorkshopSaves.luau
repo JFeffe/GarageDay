@@ -117,7 +117,7 @@ end
 
 function WorkshopSaves:checkpoint()
 	local slot = self.workshop
-	if slot and slot.loaded and self.state.day > 0 and slot:queue(Service.snapshot(self.state)) then self:schedule(slot) end
+	if slot and slot.loaded and slot:queue(Service.snapshot(self.state)) then self:schedule(slot) end
 end
 
 function WorkshopSaves:flush(slot)

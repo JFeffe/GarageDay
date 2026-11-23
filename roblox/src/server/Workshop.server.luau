@@ -5,6 +5,7 @@ local RunService = game:GetService("RunService")
 local Repair = require(ReplicatedStorage.GarageDay.Repair)
 local Service = require(ReplicatedStorage.GarageDay.Service)
 local Drive = require(script.Parent.Drive)
+local Furniture = require(script.Parent.Furniture)
 local Gear = require(script.Parent.GearWorld)
 local Props = require(script.Parent.GarageProps)
 local World = require(script.Parent.WorkshopWorld)
@@ -12,14 +13,16 @@ local WorkshopSaves = require(script.Parent.WorkshopSaves)
 
 local random = Random.new()
 local state = Service.new(Repair.jobs, function(maximum) return random:NextInteger(1, maximum) end)
-local repair = Repair.new("pressure")
-local completedNote = ""
-local world = World.build()
-local drive = Drive.new(world)
 local session = Instance.new("Folder")
 session.Name = "GarageDaySession"
+local bayFolder = Instance.new("Folder")
+bayFolder.Name = "Bays"
+bayFolder.Parent = session
 local saves = WorkshopSaves.new(state, session)
-local workshopOwner, workshopReady = nil, false
+local workshopOwner, workshopReady
+local world, lanes, prompts
+local owners, equipment, layoutsHeld = {}, {}, {}
+local refresh, advance, finishStep, mount
 
 local function remote(name)
 	local event = Instance.new("RemoteEvent")
@@ -32,28 +35,11 @@ local driveControl = remote("DriveControl")
 local vendorControl = remote("VendorControl")
 local carryControl = remote("CarryControl")
 local optionsControl = remote("OptionsControl")
-local prompts, equipment = {}, {}
-local workPrompt, declinePrompt, promptedStep
-local finishStep
-
-local function updateEquipment(player)
-	local key = Repair.carrying(repair, player.UserId) or Repair.using(repair, player.UserId)
-	local previous = equipment[player]
-	if previous and key == previous.key and previous.tool.Parent == player.Character then return end
-	if previous then previous.tool:Destroy() end
-	equipment[player] = nil
-	if not key then return end
-	local backpack = player:FindFirstChildOfClass("Backpack")
-	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-	if not backpack or not humanoid or humanoid.Health <= 0 then return end
-	local tool = World.makeEquipment(world, key, (Repair.cargo[key] or Repair.tools[key]).name)
-	tool.Parent = backpack
-	humanoid:EquipTool(tool)
-	equipment[player] = { key = key, tool = tool }
-end
+local furnitureControl = remote("FurnitureControl")
+local repairFeedback = remote("RepairFeedback")
 
 local function activeRoot(player)
-	if state.driver == player.UserId then return nil end
+	if player:GetAttribute("GarageDriverBay") then return nil end
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -65,35 +51,113 @@ local function nearby(player, anchor, radius)
 	return root and anchor and anchor:IsDescendantOf(workspace) and (root.Position - anchor.WorldPosition).Magnitude <= radius
 end
 
-local function createPrompt(name, title, object, key, hold, action, alternate)
+local function toolHeld(player)
+	for key, owner in owners do
+		if owner == player.UserId then return key end
+	end
+end
+
+local function held(player)
+	if layoutsHeld[player] then return "furniture", layoutsHeld[player].id end
+	if world.cart.owner == player then return "cart" end
+	for _, bay in world.bays do
+		local key = Repair.carrying(bay.repair, player.UserId)
+		if key then return "cargo", key, bay end
+	end
+	local key = toolHeld(player)
+	if key then return "tool", key end
+end
+
+local function updateEquipment(player)
+	local kind, key = held(player)
+	player:SetAttribute("GarageHeldKind", kind)
+	player:SetAttribute("GarageHeldKey", key)
+	local mechanical = kind == "tool" or kind == "cargo"
+	local previous = equipment[player]
+	if mechanical and previous and key == previous.key and previous.tool.Parent == player.Character then return end
+	if previous then
+		if previous.speed and previous.humanoid.Parent then previous.humanoid.WalkSpeed = previous.speed end
+		previous.tool:Destroy()
+	end
+	equipment[player] = nil
+	if not mechanical then return end
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not backpack or not humanoid or humanoid.Health <= 0 then return end
+	local item = World.makeEquipment(world, key, (Repair.cargo[key] or Repair.tools[key]).name)
+	item.Parent = backpack
+	humanoid:EquipTool(item)
+	local speed
+	if kind == "cargo" and Repair.cargo[key].large then
+		speed = humanoid.WalkSpeed
+		humanoid.WalkSpeed = speed * 0.79
+	end
+	equipment[player] = { key = key, tool = item, speed = speed, humanoid = humanoid }
+end
+
+local function createPrompt(name, title, object, anchor, hold, action, alternate)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = name
 	prompt.ActionText = title
 	prompt.ObjectText = object or ""
 	prompt.KeyboardKeyCode = alternate or Enum.KeyCode.E
-	prompt.GamepadKeyCode = if alternate then Enum.KeyCode.ButtonY else Enum.KeyCode.ButtonX
+	prompt.GamepadKeyCode = if alternate == Enum.KeyCode.R then Enum.KeyCode.ButtonL1
+		elseif alternate then Enum.KeyCode.ButtonY else Enum.KeyCode.ButtonX
 	prompt.MaxActivationDistance = 6.4
 	prompt.RequiresLineOfSight = true
 	prompt.ClickablePrompt = true
 	prompt.HoldDuration = hold
 	prompt.Enabled = false
-	prompt.Parent = world.targets[key]
+	prompt.Parent = anchor
 	prompt.Triggered:Connect(function(player)
 		if prompt.Enabled and nearby(player, prompt.Parent, prompt.MaxActivationDistance + 0.75) then action(player) end
 	end)
 	return prompt
 end
 
-local function addPrompt(name, title, object, key, hold, action, alternate)
-	local prompt = createPrompt(name, title, object, key, hold, action, alternate)
-	prompts[name] = prompt
-	return prompt
+local function activeStep(bay)
+	return if bay.lane.phase == "repair" then Repair.current(bay.repair) else nil
+end
+
+local function focus(player, bay)
+	player:SetAttribute("GarageFocusBay", bay.id)
+end
+
+local function supplyBay(player, key)
+	local chosen
+	for _, bay in world.bays do
+		local step = activeStep(bay)
+		local repair = bay.repair
+		if step and step.cargo == key and Repair.source(repair, key) == Repair.cargo[key].target
+			and not repair.placements[key] and not repair.moving then
+			if player and player:GetAttribute("GarageFocusBay") == bay.id then return bay end
+			chosen = chosen or bay
+		end
+	end
+	return chosen
+end
+
+local function toolNeeded(key)
+	for _, bay in world.bays do
+		local step = activeStep(bay)
+		if step and step.tool == key then return true end
+	end
+	return false
+end
+
+local function sharedSlotOccupied(key, except)
+	if key ~= "Bench" and key ~= "WheelStand" and key ~= "Counter1" and key ~= "Counter2" then return false end
+	for _, bay in world.bays do
+		if bay ~= except then
+			for _, location in bay.repair.placements do if location == key then return true end end
+		end
+	end
+	return false
 end
 
 local names = {
-	Lever = "Pont 01", FrontLeft = "Roue avant gauche", FrontRight = "Roue avant droite",
-	BackLeft = "Roue arrière gauche", BackRight = "Roue arrière droite", WheelStand = "Support de roue",
-	Hood = "Capot", OilCap = "Moteur", Drain = "Sous le moteur", WasteOil = "Récupérateur d’huile",
+	FrontLeft = "Roue avant gauche", FrontRight = "Roue avant droite", BackLeft = "Roue arrière gauche", BackRight = "Roue arrière droite",
+	WheelStand = "Support de roue", Hood = "Capot", OilCap = "Moteur", Drain = "Sous le moteur", WasteOil = "Récupérateur d’huile",
 	Recycling = "Recyclage", TireBin = "Pneus usés", Scrap = "Récupération des métaux",
 	BatteryTray = "Compartiment moteur", DiagnosticPort = "Compartiment moteur", Belt = "Compartiment moteur",
 	Radiator = "Radiateur", Door = "Porte conducteur", FrontLamp = "Bloc optique avant", RearLamp = "Bloc optique arrière",
@@ -101,35 +165,46 @@ local names = {
 	DamperLeft = "Suspension gauche", DamperRight = "Suspension droite", Bench = "Établi",
 }
 
-local function configureWork(step)
-	if step ~= promptedStep then
-		if workPrompt then workPrompt:Destroy() end
-		if declinePrompt then declinePrompt:Destroy() end
-		workPrompt, declinePrompt, promptedStep = nil, nil, step
+local function configureWork(bay, step)
+	if step ~= bay.promptedStep then
+		if bay.workPrompt then bay.workPrompt:Destroy() end
+		if bay.declinePrompt then bay.declinePrompt:Destroy() end
+		bay.workPrompt, bay.declinePrompt, bay.promptedStep = nil, nil, step
 		if step then
-			local hold = Service.hold(state, step.hold, step.rate, world.targets[step.target]:IsDescendantOf(world.vehicle))
-			workPrompt = createPrompt("WorkStep", step.title, names[step.target], step.target, hold,
-				function(player) finishStep(player, step, false) end)
-			workPrompt:SetAttribute("Mechanical", not step.quote)
+			local anchor = bay.targets[step.target]
+			local hold = Service.hold(state, step.hold, step.rate, anchor:IsDescendantOf(bay.vehicle))
+			bay.workPrompt = createPrompt("WorkStep", step.title, names[step.target] or "Pont 0" .. bay.id, anchor, hold,
+				function(player) finishStep(bay, player, step, false) end)
+			bay.workPrompt:SetAttribute("Mechanical", not step.quote)
+			bay.workPrompt:SetAttribute("WorkAction", step.action)
 			if step.quote then
-				declinePrompt = createPrompt("DeclineQuote", "Reporter l’intervention", "Client", step.target, 0.40,
-					function(player) finishStep(player, step, true) end, Enum.KeyCode.R)
+				bay.declinePrompt = createPrompt("DeclineQuote", "Reporter l’intervention", "Client", anchor, 0.40,
+					function(player) finishStep(bay, player, step, true) end, Enum.KeyCode.R)
 			end
 		end
 	end
 	if step then
-		workPrompt.Enabled = not repair.moving and (not step.tool or repair.tools[step.tool] ~= nil)
-			and (not step.cargo or repair.carried[step.cargo] ~= nil)
-		if declinePrompt then declinePrompt.Enabled = workPrompt.Enabled end
+		bay.workPrompt.Enabled = not bay.repair.moving and (not step.tool or owners[step.tool] ~= nil)
+			and (not step.cargo or bay.repair.carried[step.cargo] ~= nil) and not sharedSlotOccupied(step.storeAt, bay)
+		if bay.declinePrompt then bay.declinePrompt.Enabled = bay.workPrompt.Enabled end
 	end
 end
 
-local serviceTargets = { free = "Phone", reception = "Reception", payment = "Checkout", vendor = "Vendor" }
+local function updatePatience(bay)
+	local order = Service.current(state, bay.lane)
+	local fraction = if order then order.patience / order.patienceMax else 0
+	local late = order ~= nil and order.late
+	bay.info:SetAttribute("PatienceSeconds", if order then math.ceil(order.patience) else 0)
+	bay.info:SetAttribute("Patience", math.round(fraction * 100))
+	bay.info:SetAttribute("CustomerLate", late)
+	bay.info:SetAttribute("SnackPause", order ~= nil and workspace:GetServerTimeNow() < order.snackUntil)
+	World.updatePatience(bay, fraction, late)
+end
 
-local function updatePatience(order)
-	session:SetAttribute("PatienceSeconds", if order then math.ceil(order.patience) else 0)
-	session:SetAttribute("Rating", state.rating)
-	session:SetAttribute("CustomerLate", order ~= nil and order.late)
+local function snackAvailable(bay, now)
+	local order, phase = Service.current(state, bay.lane), bay.lane.phase
+	return order ~= nil and (phase == "intake" or phase == "repair" or phase == "outbound")
+		and Service.owns(state, "vending") and order.snacks < 4 and now >= order.snackUntil
 end
 
 local function updateCartLoading()
@@ -138,72 +213,132 @@ local function updateCartLoading()
 		and (world.targets.Cart.WorldPosition - world.targets.TireRack.WorldPosition).Magnitude < 9
 end
 
-local function refresh()
-	local phase = state.phase
-	local order = Service.current(state)
-	local step = if phase == "repair" then Repair.current(repair) else nil
-	World.apply(world, state, repair)
-	for _, player in Players:GetPlayers() do updateEquipment(player) end
+local function refreshBay(bay)
+	local lane, info, repair, p = bay.lane, bay.info, bay.repair, bay.prompts
+	local phase = lane.phase
+	local order, step = Service.current(state, lane), activeStep(bay)
+	World.apply(bay, lane, repair)
+	p.receive.Enabled = phase == "reception"
+	p.receive.HoldDuration = Service.hold(state, 0.48, "reception", false)
+	p.receive.ObjectText = if order then order.name .. " · Baie 0" .. bay.id else "Accueil"
+	p.drive.Enabled = (phase == "intake" or phase == "outbound") and lane.driver == 0
+	p.pay.Enabled = phase == "payment"
+	p.pay.ActionText = if order then "Encaisser " .. Service.invoice(state, order) .. " $" else "Encaisser"
+	p.pay.ObjectText = if order then order.name .. " · Baie 0" .. bay.id else "Caisse"
+	p.snack.Enabled = snackAvailable(bay, workspace:GetServerTimeNow())
+	for key, prompt in p.cargo do
+		local placement = bay.placed[key]
+		local anchor = if placement and Repair.source(repair, key) then placement.anchor else nil
+		if prompt.Parent ~= anchor then prompt.Parent = anchor end
+		prompt.Enabled = step ~= nil and anchor ~= nil
+	end
+	configureWork(bay, step)
+	if lane.driver == 0 then
+		World.markParking(bay, phase, false)
+		info:SetAttribute("ParkingReady", false)
+		info:SetAttribute("ParkingHint", "")
+	end
+	info:SetAttribute("Ticket", lane.ticket)
+	info:SetAttribute("Customer", if order then order.name else "")
+	info:SetAttribute("OrderEstimate", if order then order.estimate else 0)
+	info:SetAttribute("Invoice", if order then Service.invoice(state, order) else 0)
+	local label = {}
+	if order then for _, key in order.jobs do table.insert(label, Repair.jobs[key].name) end end
+	info:SetAttribute("OrderJobs", table.concat(label, " · "))
+	info:SetAttribute("Job", if step then repair.job else nil)
+	info:SetAttribute("JobNumber", lane.repairIndex)
+	info:SetAttribute("JobCount", if order then #order.jobs else 0)
+	info:SetAttribute("Step", if step then repair.index else 0)
+	info:SetAttribute("Steps", if step then #repair.steps else 0)
+	info:SetAttribute("Action", step and step.action)
+	info:SetAttribute("ActionTitle", step and step.title)
+	info:SetAttribute("Target", step and step.target)
+	info:SetAttribute("NeedsTool", step and step.tool)
+	info:SetAttribute("ToolOnFloor", step ~= nil and step.tool ~= nil and world.toolDrops[step.tool] ~= nil)
+	info:SetAttribute("NeedsEmptyHands", step ~= nil and Repair.needsEmptyHands(step))
+	info:SetAttribute("NeedsCargo", step and step.cargo)
+	info:SetAttribute("CargoOwner", if step and step.cargo then repair.carried[step.cargo] else nil)
+	info:SetAttribute("CargoSource", if step and step.cargo then Repair.source(repair, step.cargo) else nil)
+	info:SetAttribute("Motion", step and step.motion)
+	info:SetAttribute("Moving", repair.moving)
+	info:SetAttribute("Pressure", repair.pressure)
+	info:SetAttribute("StatusNote", if repair.note ~= "" then repair.note else bay.completedNote)
+	info:SetAttribute("Driver", lane.driver)
+	info:SetAttribute("Phase", phase)
+	updatePatience(bay)
 
-	local focus = serviceTargets[phase]
-	prompts.open.Enabled = workshopReady and (phase == "free" or phase == "vendor")
+	if phase == "reception" then return bay.targets.Reception end
+	if phase == "payment" then return bay.targets.Checkout end
+	if phase == "intake" or phase == "outbound" then
+		return if lane.driver == 0 then bay.targets.Door elseif phase == "intake" then bay.targets.Dock else bay.targets.Parking
+	end
+	if step and not repair.moving then
+		if step.cargo and not repair.carried[step.cargo] then
+			local placement = bay.placed[step.cargo]
+			if placement then return placement.anchor end
+			local stock = Repair.source(repair, step.cargo)
+			if stock then return bay.targets[stock] end
+		end
+		if step.tool and not owners[step.tool] then
+			local drop = world.toolDrops[step.tool]
+			return if drop then drop.anchor else bay.targets[Repair.tools[step.tool].target]
+		end
+		return bay.targets[step.target]
+	end
+end
+
+refresh = function()
+	local phase = state.phase
+	local nextDay = state.day < Service.lastDay
+	prompts.open.Enabled = workshopReady == true and (phase == "free" or (phase == "vendor" and nextDay))
 	prompts.open.ActionText = if phase == "vendor" then "Ouvrir la prochaine journée" else "Ouvrir le service"
-	prompts.book.Enabled = not state.extraBooked and #state.orders < Service.maxAppointments
-		and (phase == "reception" or phase == "intake" or phase == "repair")
-	prompts.receive.Enabled = phase == "reception"
-	prompts.receive.HoldDuration = Service.hold(state, 0.48, "reception", false)
-	prompts.drive.Enabled = (phase == "intake" or phase == "outbound") and state.driver == 0
-	prompts.pay.Enabled = phase == "payment"
-	prompts.pay.ActionText = if order then "Encaisser " .. Service.invoice(state, order) .. " $" else "Encaisser"
+	prompts.map.Enabled = prompts.open.Enabled
+	prompts.map.ActionText = if state.map == "PetitAtelier" then "Choisir le Tandem · 2 baies" else "Choisir le Petit Atelier · 1 baie"
+	prompts.finish.Enabled = phase == "vendor" and not nextDay
+	prompts.book.Enabled = phase == "service" and not state.extraBooked and #state.orders < Service.maxAppointments
 	prompts.vendor.Enabled = phase == "vendor"
-	prompts.snack.Enabled = Service.owns(state, "vending") and step ~= nil and order.snacks < 4
-		and workspace:GetServerTimeNow() >= order.snackUntil
+
 	local cart = world.cart
-	prompts.cart.Enabled = true
+	prompts.cart.Enabled = phase == "service" or cart.owner ~= nil
 	prompts.cart.ActionText = if cart.owner then "Poser le chariot" else "Pousser le chariot"
 	prompts.cart.ObjectText = string.format("Chariot · %d/4 roues", cart.stock)
 	updateCartLoading()
-	prompts.unloadCart.Enabled = step ~= nil and cart.stock > 0 and Repair.source(repair, "newTire") == "TireRack"
+	prompts.unloadCart.Enabled = cart.stock > 0 and supplyBay(nil, "newTire") ~= nil
+	local carrying = false
+	for _, bay in world.bays do if next(bay.repair.carried) ~= nil then carrying = true break end end
 	for _, key in { "Counter1", "Counter2" } do
-		local occupied = false
-		for _, location in repair.placements do if location == key then occupied = true break end end
-		prompts["store" .. key].Enabled = step ~= nil and Service.owns(state, "counter")
-			and next(repair.carried) ~= nil and not occupied
-	end
-	if phase == "intake" or phase == "outbound" then
-		focus = if state.driver == 0 then "Door" elseif phase == "intake" then "Dock" else "Parking"
+		prompts[key].Enabled = Service.owns(state, "counter") and carrying and not sharedSlotOccupied(key, nil)
 	end
 
 	for key, spec in Repair.tools do
-		prompts["takeTool_" .. key].Enabled = step ~= nil and Repair.canTakeTool(repair, key)
-		prompts["returnTool_" .. key].Enabled = step ~= nil and repair.tools[key] ~= nil
-		session:SetAttribute("Tool_" .. key, repair.tools[key])
+		local drop = world.toolDrops[key]
+		local take = prompts.tools[key]
+		take.Parent = if drop then drop.anchor else world.targets[spec.target]
+		take.ActionText = if drop then "Ramasser" else "Prendre"
+		take.KeyboardKeyCode = if drop then Enum.KeyCode.F else Enum.KeyCode.E
+		take.GamepadKeyCode = if drop then Enum.KeyCode.ButtonY else Enum.KeyCode.ButtonX
+		take.Enabled = owners[key] == nil and (drop ~= nil or toolNeeded(key))
+		prompts.returns[key].Enabled = owners[key] ~= nil
+		session:SetAttribute("Tool_" .. key, owners[key])
 	end
-	for key in Repair.cargo do
-		local source = if step then Repair.source(repair, key) else nil
-		local placement = world.placed[key]
-		local prompt = prompts["take_" .. key]
-		local anchor = if source then (if placement then placement.anchor else world.targets[source]) else nil
-		if prompt.Parent ~= anchor then prompt.Parent = anchor end
-		prompt.Enabled = anchor ~= nil
-		session:SetAttribute("Carry_" .. key, repair.carried[key])
+	Gear.syncStocks(world, owners)
+	Props.apply(world, state)
+	local objective
+	for _, bay in world.bays do
+		local target = refreshBay(bay)
+		objective = objective or target
 	end
-	configureWork(step)
-	if step and not repair.moving then
-		focus = step.target
-		if step.cargo and not repair.carried[step.cargo] then
-			local placement = world.placed[step.cargo]
-			focus = if placement then placement.anchor else Repair.source(repair, step.cargo) or step.target
-		end
-		if step.tool and not repair.tools[step.tool] then focus = Repair.tools[step.tool].target end
+	for key, prompt in prompts.supplies do prompt.Enabled = supplyBay(nil, key) ~= nil end
+	for id, prompt in prompts.furniture do
+		local item = world.furniture[id]
+		prompt.Enabled = phase == "vendor" and item.model:IsDescendantOf(workspace) and not item.holder
 	end
-	World.setObjective(world, if workshopReady then focus else nil)
+	for _, player in Players:GetPlayers() do updateEquipment(player) end
+
+	if phase == "free" then objective = world.targets.Phone end
+	if phase == "vendor" then objective = if nextDay then world.targets.Vendor else world.targets.Phone end
+	World.setObjective(world, if workshopReady then objective else nil)
 	World.updateBoard(world, state)
-	if state.driver == 0 then
-		World.markParking(world, phase, false)
-		session:SetAttribute("ParkingReady", false)
-		session:SetAttribute("ParkingHint", "")
-	end
 
 	session:SetAttribute("Day", state.day)
 	session:SetAttribute("Cash", state.cash)
@@ -211,64 +346,32 @@ local function refresh()
 	session:SetAttribute("LastInvoice", state.lastInvoice)
 	session:SetAttribute("Served", state.served)
 	session:SetAttribute("Appointments", #state.orders)
-	session:SetAttribute("Ticket", state.ticket)
-	session:SetAttribute("Customer", if order then order.name else "")
-	session:SetAttribute("OrderEstimate", if order then order.estimate else 0)
-	session:SetAttribute("Invoice", if order then Service.invoice(state, order) else 0)
-	local label = {}
-	if order then for _, key in order.jobs do table.insert(label, Repair.jobs[key].name) end end
-	session:SetAttribute("OrderJobs", table.concat(label, " · "))
-	session:SetAttribute("Job", if step then repair.job else nil)
-	session:SetAttribute("JobNumber", state.repairIndex)
-	session:SetAttribute("JobCount", if order then #order.jobs else 0)
-	session:SetAttribute("Step", if step then repair.index else 0)
-	session:SetAttribute("Steps", if step then #repair.steps else 0)
-	session:SetAttribute("Action", step and step.action)
-	session:SetAttribute("ActionTitle", step and step.title)
-	session:SetAttribute("Target", step and step.target)
-	session:SetAttribute("NeedsTool", step and step.tool)
-	session:SetAttribute("NeedsEmptyHands", step ~= nil and Repair.needsEmptyHands(step))
-	session:SetAttribute("NeedsCargo", step and step.cargo)
-	session:SetAttribute("CargoSource", if step and step.cargo then Repair.source(repair, step.cargo) else nil)
-	session:SetAttribute("Quote", step and step.quote)
-	session:SetAttribute("Motion", step and step.motion)
-	session:SetAttribute("Moving", repair.moving)
-	session:SetAttribute("HoodOpen", repair.hoodOpen)
-	session:SetAttribute("Pressure", repair.pressure)
-	session:SetAttribute("StatusNote", if repair.note ~= "" then repair.note else completedNote)
-	session:SetAttribute("Driver", state.driver)
+	session:SetAttribute("Rating", state.rating)
+	session:SetAttribute("TotalEarned", state.totalEarned)
+	local total, days = 0, 0
+	for _, rating in state.grades do total += rating days += 1 end
+	session:SetAttribute("AverageRating", if days > 0 then total / (2 * days) else 0)
 	session:SetAttribute("CartOwner", cart.owner and cart.owner.UserId)
 	session:SetAttribute("CartStock", cart.stock)
 	for i = 1, 3 do session:SetAttribute("Offer" .. i, state.offers[i]) end
 	for id in Service.offers do session:SetAttribute("Bought_" .. id, Service.owns(state, id)) end
 	session:SetAttribute("Rerolled", state.rerolled)
-	updatePatience(order)
 	session:SetAttribute("Phase", phase)
 end
 
-local function makeRepair()
-	local order = Service.current(state)
-	local job = order.jobs[state.repairIndex]
-	table.clear(world.drops)
-	repair = Repair.new(job, {
+local function makeRepair(bay)
+	local order = Service.current(state, bay.lane)
+	local job = order.jobs[bay.lane.repairIndex]
+	table.clear(bay.drops)
+	table.clear(bay.pieceMotion)
+	bay.repair = Repair.new(job, {
 		wheel = Repair.wheels[random:NextInteger(1, #Repair.wheels)],
 		rightDamper = random:NextNumber() < 0.5, rearLamp = random:NextNumber() < 0.5,
 		crackedShield = random:NextNumber() < 0.5, badPuncture = random:NextNumber() < 0.45,
 		windowModule = random:NextNumber() < 0.55, highPressure = random:NextNumber() < 0.48,
 		weakBattery = job == "inspection" and #order.jobs < 4 and not table.find(order.jobs, "battery") and random:NextNumber() < 0.44,
 		oilRecovery = Service.owns(state, "oil_recovery"),
-	})
-end
-
-local function arrival()
-	local order = Service.current(state)
-	completedNote = ""
-	makeRepair()
-	World.selectVehicle(world, order.vehicle)
-	refresh()
-	World.arrive(world, order)
-	Service.arrived(state)
-	refresh()
+	}, owners)
 end
 
 local function openMarket()
@@ -278,132 +381,309 @@ local function openMarket()
 	refresh()
 end
 
-finishStep = function(player, step, declined)
-	if state.phase ~= "repair" or Repair.current(repair) ~= step then return end
+advance = function()
+	for _, bay in world.bays do
+		if Service.dispatch(state, lanes, bay.lane) then
+			local order = Service.current(state, bay.lane)
+			bay.completedNote = ""
+			makeRepair(bay)
+			World.selectVehicle(bay, order.vehicle)
+			task.spawn(function()
+				World.arrive(bay, order)
+				Service.arrived(bay.lane)
+				refresh()
+			end)
+		end
+	end
+	if Service.closeShift(state, lanes) then task.spawn(openMarket) end
+	refresh()
+end
+
+finishStep = function(bay, player, step, declined)
+	local repair, lane = bay.repair, bay.lane
+	local root = activeRoot(player)
+	if not root or activeStep(bay) ~= step or sharedSlotOccupied(step.storeAt, bay) then return end
+	local kind, _, cargoBay = held(player)
+	if kind == "cart" or kind == "furniture" or (kind == "cargo" and cargoBay ~= bay) then return end
 	local done = if declined then Repair.decline(repair) else Repair.act(repair, player.UserId, step.action)
 	if not done then return end
+	focus(player, bay)
 	if step.motion then
 		refresh()
-		World.animate(world, step.motion, Service.liftTime(state))
+		World.animate(bay, step.motion, Service.liftTime(state))
 		Repair.finishMotion(repair)
 	elseif not declined then
-		World.effect(world, step)
-		if step.target == "TireBin" and step.cargo then Gear.recycle(world, step.cargo) end
+		if step.leaveAt == "Workpiece" then
+			local point = bay.targets[step.target].WorldPosition
+			local direction = (root.Position - point) * Vector3.new(1, 0, 1)
+			local offset = if direction.Magnitude > 0.1 then direction.Unit * 1.15 else Vector3.xAxis
+			local height = math.clamp(bay.gearTemplates[step.output]:GetExtentsSize().Y / 2, 0.14, 0.75)
+			bay.drops[step.output] = CFrame.new(Vector3.new(point.X, height + 0.08, point.Z) + offset)
+			bay.pieceMotion[step.output] = CFrame.new(point + offset * 0.5)
+		end
+		if step.storeAt and step.cargo then
+			bay.pieceMotion[step.cargo] = bay.targets[step.target].WorldCFrame + Vector3.yAxis * 0.28
+		end
+		World.effect(bay, step, root)
+		if not step.quote then repairFeedback:FireClient(player, step.action) end
 	end
 	if not Repair.current(repair) then
-		World.recordRepair(world, repair)
-		completedNote = repair.note
-		Service.finishRepair(state, repair.job, repair.billable, declined and step.quote == "window", repair.surcharge, repair.addBattery)
+		World.recordRepair(bay, repair)
+		bay.completedNote = repair.note
+		Service.finishRepair(state, repair.job, repair.billable, declined and step.quote == "window", repair.surcharge, repair.addBattery, lane)
 		saves:checkpoint()
-		if state.phase == "repair" then
-			makeRepair()
+		if lane.phase == "repair" then makeRepair(bay)
 		else
-			table.clear(repair.tools)
 			table.clear(repair.carried)
 			table.clear(repair.placements)
-			Props.parkCart(world)
 		end
 	end
 	refresh()
 end
 
-addPrompt("open", "Ouvrir le service", "Téléphone", "Phone", 0.45, function()
-	local night = state.phase == "vendor"
-	if not Service.open(state) then return end
-	saves:checkpoint()
-	if night then task.spawn(World.moveVendor, world, false) end
-	arrival()
-end)
-addPrompt("book", "Ajouter un rendez-vous", "Téléphone", "Phone", 0.40, function()
-	if Service.book(state) then saves:checkpoint() refresh() end
-end)
-addPrompt("receive", "Accueillir le client", "Accueil", "Reception", 0.48, function()
-	if not Service.receive(state) then return end
-	refresh()
-	World.waitCustomer(world)
-end)
-addPrompt("drive", "Prendre le volant", "Véhicule du client", "Door", 0, function(player)
-	if not Service.beginDrive(state, player.UserId) then return end
-	if world.cart.owner == player then Props.parkCart(world) end
-	if not drive:enter(player) then state.driver = 0 end
-	refresh()
-end)
-addPrompt("pay", "Encaisser", "Caisse", "Checkout", 0.55, function()
-	if not Service.pay(state) then return end
-	saves:checkpoint()
-	refresh()
-	World.depart(world)
-	Service.departed(state)
-	if state.phase == "arrival" then
-		arrival()
-	else
-		openMarket()
-	end
-end)
-addPrompt("vendor", "Voir les offres", "La Caravane", "Vendor", 0, function(player)
-	if state.phase == "vendor" then vendorControl:FireClient(player, "open") end
-end)
-addPrompt("snack", "Offrir une collation", "Salle d’attente", "Snack", 0.3, function()
-	if Service.snack(state, workspace:GetServerTimeNow()) then saves:checkpoint() refresh() end
-end)
-
-for key, spec in Repair.tools do
-	addPrompt("takeTool_" .. key, "Prendre", spec.name, spec.target, 0.12, function(player)
-		if Repair.takeTool(repair, player.UserId, key) then refresh() end
-	end):SetAttribute("Mechanical", true)
-	addPrompt("returnTool_" .. key, "Rendre", spec.name, spec.target, 0.24, function(player)
-		if Repair.returnTool(repair, player.UserId, key) then refresh() end
-	end)
-end
-for key, spec in Repair.cargo do
-	addPrompt("take_" .. key, "Prendre", spec.name, spec.target, 0.15, function(player)
-		if Repair.take(repair, player.UserId, key) then refresh() end
-	end):SetAttribute("Mechanical", true)
-end
-for _, key in { "Counter1", "Counter2" } do
-	addPrompt("store" .. key, "Poser la pièce", "Desserte", key, 0.18, function(player)
-		if Repair.drop(repair, player.UserId, key) then refresh() end
-	end)
+local function stopArrangement(player)
+	local selection = layoutsHeld[player]
+	if not selection then return false end
+	selection.item.holder = nil
+	layoutsHeld[player] = nil
+	if player.Parent == Players then furnitureControl:FireClient(player, "end") end
+	return true
 end
 
-addPrompt("cart", "Pousser le chariot", "Chariot", "Cart", 0, function(player)
-	if Props.pullCart(world, player, state) then refresh() end
-end)
-addPrompt("loadCart", "Charger une roue", "Chariot", "TireRack", 0.30, function(player)
-	if world.cart.owner ~= player then return end
-	if (world.targets.Cart.WorldPosition - world.targets.TireRack.WorldPosition).Magnitude >= 9 then return end
-	Props.stockCart(world, 1)
-	refresh()
-end, Enum.KeyCode.F)
-addPrompt("unloadCart", "Prendre une roue du chariot", "Chariot", "Cart", 0.22, function(player)
-	if world.cart.stock > 0 and Repair.source(repair, "newTire") == "TireRack" and Repair.take(repair, player.UserId, "newTire") then
-		Props.stockCart(world, -1)
+local function mountBay(bay)
+	bay.lane, bay.repair, bay.completedNote = Service.newLane(), Repair.new("pressure", nil, owners), ""
+	table.insert(lanes, bay.lane)
+	bay.drive = Drive.new(bay)
+	local info = Instance.new("Folder")
+	info.Name = tostring(bay.id)
+	info:SetAttribute("Dock", bay.dockPose.Position)
+	info.Parent = bayFolder
+	bay.info = info
+	local car = Instance.new("ObjectValue")
+	car.Name = "Vehicle"
+	car.Value = bay.vehicle
+	car.Parent = info
+	local lane = bay.lane
+	local p = { cargo = {} }
+	bay.prompts = p
+	p.receive = createPrompt("Receive", "Accueillir le client", "Accueil", bay.targets.Reception, 0.48, function(player)
+		if not Service.receive(lane) then return end
+		focus(player, bay)
 		refresh()
+		World.waitCustomer(bay)
+	end)
+	p.drive = createPrompt("Drive", "Prendre le volant", "Véhicule · Baie 0" .. bay.id, bay.targets.Door, 0, function(player)
+		if held(player) or not Service.beginDrive(lane, player.UserId) then return end
+		if not bay.drive:enter(player) then lane.driver = 0
+		else
+			player:SetAttribute("GarageDriverBay", bay.id)
+			focus(player, bay)
+		end
+		refresh()
+	end)
+	p.pay = createPrompt("Pay", "Encaisser", "Caisse", bay.targets.Checkout, 0.55, function(player)
+		if not Service.pay(state, lane) then return end
+		focus(player, bay)
+		saves:checkpoint()
+		refresh()
+		World.depart(bay)
+		Service.clearLane(lane)
+		advance()
+	end)
+	p.snack = createPrompt("Snack", "Offrir une collation", "Baie 0" .. bay.id, bay.targets.Snack, 0.3, function(player)
+		if Service.snack(state, workspace:GetServerTimeNow(), lane) then focus(player, bay) saves:checkpoint() refresh() end
+	end)
+	for key, spec in Repair.cargo do
+		p.cargo[key] = createPrompt("Recover_" .. key, "Ramasser", spec.name, nil, 0.15, function(player)
+			if not held(player) and Repair.take(bay.repair, player.UserId, key) then focus(player, bay) refresh() end
+		end)
+		p.cargo[key]:SetAttribute("Mechanical", true)
 	end
-end, Enum.KeyCode.F)
+end
 
-carryControl.OnServerEvent:Connect(function(player)
+local function setSpawns()
+	for i, player in Players:GetPlayers() do
+		local spawn = world.spawns[(i - 1) % #world.spawns + 1]
+		player.RespawnLocation = spawn
+		player:SetAttribute("GarageFocusBay", nil)
+		if player.Character then player.Character:PivotTo(spawn.CFrame + Vector3.new(0, 3, 0)) end
+	end
+end
+
+local function mountPrompts()
+	prompts = { tools = {}, returns = {}, supplies = {}, furniture = {} }
+	prompts.open = createPrompt("OpenDay", "Ouvrir le service", "Téléphone", world.targets.Phone, 0.45, function()
+		if next(layoutsHeld) then return end
+		local night = state.phase == "vendor"
+		if not Service.open(state) then return end
+		state.phase = "service"
+		saves:checkpoint()
+		if night then task.spawn(World.moveVendor, world, false) end
+		advance()
+	end)
+	prompts.map = createPrompt("SelectMap", "Changer de carte", "Téléphone", world.targets.Phone, 0.42, function(player)
+		if held(player) or next(layoutsHeld) or world.cart.owner or next(owners) then return end
+		for _, bay in world.bays do if next(bay.repair.carried) then return end end
+		if Service.selectMap(state, if state.map == "PetitAtelier" then "Tandem" else "PetitAtelier") then
+			mount()
+			saves:checkpoint()
+		end
+	end, Enum.KeyCode.F)
+	prompts.finish = createPrompt("FinishCampaign", "Voir le bilan des 10 jours", "Téléphone", world.targets.Phone, 0.65, function()
+		if not next(layoutsHeld) and Service.finishCampaign(state) then saves:checkpoint() refresh() end
+	end)
+	prompts.book = createPrompt("Book", "Ajouter un rendez-vous", "Téléphone", world.targets.Phone, 0.40, function()
+		if Service.book(state) then saves:checkpoint() advance() end
+	end)
+	prompts.vendor = createPrompt("Vendor", "Voir les offres", "La Caravane", world.targets.Vendor, 0, function(player)
+		if state.phase == "vendor" and not layoutsHeld[player] then vendorControl:FireClient(player, "open") end
+	end)
+
+	for key, spec in Repair.tools do
+		local anchor = world.targets[spec.target]
+		prompts.tools[key] = createPrompt("TakeTool_" .. key, "Prendre", spec.name, anchor, 0.12, function(player)
+			if held(player) or owners[key] or (not world.toolDrops[key] and not toolNeeded(key)) then return end
+			owners[key] = player.UserId
+			Gear.clearTool(world, key, prompts.tools[key])
+			refresh()
+		end)
+		prompts.tools[key]:SetAttribute("Mechanical", true)
+		prompts.returns[key] = createPrompt("ReturnTool_" .. key, "Ranger", spec.name, anchor, 0.22, function(player)
+			if owners[key] ~= player.UserId then return end
+			owners[key] = nil
+			World.sound(anchor, "drop")
+			refresh()
+		end, Enum.KeyCode.F)
+	end
+	for key, spec in Repair.cargo do
+		if spec.target then
+			prompts.supplies[key] = createPrompt("Stock_" .. key, "Prendre", spec.name, world.targets[spec.target], 0.15, function(player)
+				local bay = not held(player) and supplyBay(player, key)
+				if bay and Repair.take(bay.repair, player.UserId, key) then focus(player, bay) refresh() end
+			end)
+			prompts.supplies[key]:SetAttribute("Mechanical", true)
+		end
+	end
+	for _, key in { "Counter1", "Counter2" } do
+		prompts[key] = createPrompt("Store_" .. key, "Poser la pièce", "Desserte", world.targets[key], 0.18, function(player)
+			local kind, item, bay = held(player)
+			if kind ~= "cargo" or sharedSlotOccupied(key, nil) then return end
+			bay.pieceMotion[item] = CFrame.new(world.targets[key].WorldPosition + Vector3.yAxis * 0.32)
+			Repair.drop(bay.repair, player.UserId, key)
+			World.sound(world.targets[key], "drop")
+			refresh()
+		end)
+	end
+	prompts.cart = createPrompt("Cart", "Pousser le chariot", "Chariot", world.targets.Cart, 0, function(player)
+		if (not held(player) or world.cart.owner == player) and Props.pullCart(world, player, state) then refresh() end
+	end)
+	prompts.loadCart = createPrompt("LoadCart", "Charger une roue", "Chariot", world.targets.TireRack, 0.30, function(player)
+		if world.cart.owner ~= player or not prompts.loadCart.Enabled then return end
+		Props.stockCart(world, 1)
+		refresh()
+	end, Enum.KeyCode.F)
+	prompts.unloadCart = createPrompt("UnloadCart", "Prendre une roue du chariot", "Chariot", world.targets.Cart, 0.22, function(player)
+		local bay = not held(player) and supplyBay(player, "newTire")
+		if bay and world.cart.stock > 0 and Repair.take(bay.repair, player.UserId, "newTire") then
+			Props.stockCart(world, -1)
+			focus(player, bay)
+			refresh()
+		end
+	end, Enum.KeyCode.F)
+
+	for id, item in world.furniture do
+		prompts.furniture[id] = createPrompt("Arrange_" .. id, "Déplacer ou pivoter", item.model.Name, item.anchor, 0.24, function(player)
+			if state.phase ~= "vendor" or item.holder or held(player) then return end
+			item.holder = player
+			layoutsHeld[player] = { id = id, item = item }
+			furnitureControl:FireClient(player, "begin", item.model, item.size, item.home, item.turn or 0, world.layout.at(0, 0), world.layout.scale)
+			refresh()
+		end, Enum.KeyCode.F)
+	end
+end
+
+mount = function()
+	if world then
+		for _, bay in world.bays do
+			for _, temporary in bay.prompts.cargo do temporary:Destroy() end
+		end
+		World.destroy(world)
+		bayFolder:ClearAllChildren()
+	end
+	world, lanes = World.build(state.map), {}
+	Props.apply(world, state)
+	Furniture.restore(world, state.furniture[state.map])
+	for _, bay in world.bays do mountBay(bay) end
+	mountPrompts()
+	session:SetAttribute("Map", state.map)
+	session:SetAttribute("MapName", world.layout.name)
+	session:SetAttribute("BayCount", #world.bays)
+	setSpawns()
+	if state.phase == "vendor" then World.restoreVendor(world)
+	elseif state.phase == "complete" then World.setEvening(world, true) end
+	refresh()
+end
+
+local function groundDrop(player, key)
 	local root = activeRoot(player)
 	if not root then return end
-	local cargo = if state.phase == "repair" then Repair.carrying(repair, player.UserId) else nil
-	if not cargo then
-		if world.cart.owner == player then Props.parkCart(world) refresh() end
-		return
-	end
 	local forward = root.CFrame.LookVector * Vector3.new(1, 0, 1)
 	if forward.Magnitude < 0.1 then return end
 	local parameters = RaycastParams.new()
 	parameters.FilterType = Enum.RaycastFilterType.Exclude
 	parameters.FilterDescendantsInstances = { player.Character }
 	parameters.RespectCanCollide = true
-	local obstruction = workspace:Raycast(root.Position, forward.Unit * 2.35, parameters)
-	local point = root.Position + forward.Unit * (if obstruction then math.max(0, obstruction.Distance - 0.65) else 2.35)
-	local floor = workspace:Raycast(point + Vector3.yAxis * 0.4, -Vector3.yAxis * 7, parameters)
-	if not floor then return end
-	local height = if cargo == "usedTire" or cargo == "newTire" or cargo == "serviceWheel" then 0.41
-		else math.clamp(world.gearTemplates[cargo]:GetExtentsSize().Y / 2, 0.13, 0.82)
-	world.drops[cargo] = CFrame.new(floor.Position + Vector3.yAxis * height)
-	Repair.drop(repair, player.UserId, "Ground")
+	local direction = forward.Unit
+	local obstruction = workspace:Raycast(root.Position, direction * 2.35, parameters)
+	local reach = if obstruction then math.max(0, obstruction.Distance - 0.65) else 2.35
+	local wheel = key == "usedTire" or key == "newTire" or key == "serviceWheel"
+	local height = if wheel then 0.41 else math.clamp(world.gearTemplates[key]:GetExtentsSize().Y / 2, 0.13, 0.82)
+	local rotation = CFrame.lookAlong(Vector3.zero, direction).Rotation
+	for _, scale in { 1, 0.62, 0.25, 0 } do
+		local point = root.Position + direction * (reach * scale)
+		local surface = workspace:Raycast(point + Vector3.yAxis * 0.4, -Vector3.yAxis * 7, parameters)
+		if surface and surface.Position.Y >= -0.5 and surface.Position.Y <= 0.45 then
+			local landing = CFrame.new(surface.Position + Vector3.yAxis * height) * rotation
+			return landing, CFrame.new(point - Vector3.yAxis * 0.85) * rotation
+		end
+	end
+end
+
+carryControl.OnServerEvent:Connect(function(player)
+	local kind, key, bay = held(player)
+	if kind == "furniture" then
+		stopArrangement(player)
+	elseif kind == "cart" then
+		Props.parkCart(world)
+	elseif kind == "cargo" or kind == "tool" then
+		local pose, start = groundDrop(player, key)
+		if not pose then return end
+		if kind == "cargo" then
+			bay.drops[key], bay.pieceMotion[key] = pose, start
+			Repair.drop(bay.repair, player.UserId, "Ground")
+		else
+			owners[key] = nil
+			Gear.dropTool(world, key, pose, start)
+		end
+		repairFeedback:FireClient(player, "drop")
+	else return end
+	refresh()
+	local drop = if kind == "cargo" then bay.placed[key] elseif kind == "tool" then world.toolDrops[key] else nil
+	if drop then World.sound(drop.anchor, "drop") end
+end)
+
+furnitureControl.OnServerEvent:Connect(function(player, action, x, z, turn)
+	local selection = layoutsHeld[player]
+	local root = activeRoot(player)
+	if not selection or not root or state.phase ~= "vendor" or action ~= "place" then return end
+	local placement = Furniture.place(world, selection.item, root, x, z, turn)
+	if not placement then furnitureControl:FireClient(player, "blocked") return end
+	local layout = state.furniture[state.map] or {}
+	state.furniture[state.map] = layout
+	layout[selection.id] = placement
+	stopArrangement(player)
+	World.sound(selection.item.anchor, "drop")
+	saves:checkpoint()
 	refresh()
 end)
 
@@ -414,9 +694,7 @@ vendorControl.OnServerEvent:Connect(function(player, action, id)
 		bought, message = Service.buy(state, id)
 	elseif action == "reroll" then
 		bought, message = Service.reroll(state)
-	else
-		return
-	end
+	else return end
 	if bought then saves:checkpoint() refresh() end
 	vendorControl:FireClient(player, "result", bought, message)
 end)
@@ -425,42 +703,49 @@ optionsControl.OnServerEvent:Connect(function(player, sensitivity)
 	saves:changeSensitivity(player, sensitivity)
 end)
 
-local function goalPose()
-	return if state.phase == "intake" then world.dockPose else world.parkingPose
+local function drivingGoal(bay)
+	return if bay.lane.phase == "intake" then bay.dockPose else bay.parkingPose
 end
 
 driveControl.OnServerEvent:Connect(function(player, action, throttle, steer)
-	if state.driver ~= player.UserId or not drive.rider then return end
+	local bay = world.bays[player:GetAttribute("GarageDriverBay")]
+	if not bay or bay.lane.driver ~= player.UserId or not bay.drive.rider then return end
+	local drive, lane = bay.drive, bay.lane
 	if action == "input" then
 		drive:setInput(throttle, steer)
 	elseif action == "park" then
-		local goal = goalPose()
+		local goal = drivingGoal(bay)
 		local aligned = drive:aligned(goal)
-		if not Service.park(state, player.UserId, aligned) then return end
+		if not Service.park(lane, player.UserId, aligned) then return end
 		drive:leave(goal)
+		player:SetAttribute("GarageDriverBay", nil)
 		refresh()
-		if state.phase == "checkout" then
-			World.checkoutCustomer(world)
-			Service.readyToPay(state)
+		if lane.phase == "checkout" then
+			World.checkoutCustomer(bay)
+			Service.readyToPay(lane)
 			refresh()
 		end
 	elseif action == "exit" and math.abs(drive.speed) < 2.2 then
 		drive:leave()
-		state.driver = 0
+		lane.driver = 0
+		player:SetAttribute("GarageDriverBay", nil)
 		refresh()
 	end
 end)
 
-local elapsed, doorElapsed = 0, 0
+local elapsed, doorElapsed, saveElapsed = 0, 0, 0
 RunService.Heartbeat:Connect(function(dt)
-	if state.driver ~= 0 then
-		drive:update(dt)
-		local ready, hint = drive:aligned(goalPose())
-		if session:GetAttribute("ParkingReady") ~= ready then
-			World.markParking(world, state.phase, ready)
-			session:SetAttribute("ParkingReady", ready)
+	if not world then return end
+	for _, bay in world.bays do
+		if bay.lane.driver ~= 0 then
+			bay.drive:update(dt)
+			local ready, hint = bay.drive:aligned(drivingGoal(bay))
+			if bay.info:GetAttribute("ParkingReady") ~= ready then
+				World.markParking(bay, bay.lane.phase, ready)
+				bay.info:SetAttribute("ParkingReady", ready)
+			end
+			bay.info:SetAttribute("ParkingHint", hint)
 		end
-		session:SetAttribute("ParkingHint", hint)
 	end
 	if not Props.moveCart(world, dt) then refresh() end
 	doorElapsed += dt
@@ -470,67 +755,76 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	elapsed += dt
 	if elapsed < 0.27 then return end
-	local order = Service.current(state)
+	local changed = false
 	local now = workspace:GetServerTimeNow()
-	if Service.passTime(state, elapsed, now) then saves:checkpoint() end
-	updatePatience(order)
-	if world.cart.owner then updateCartLoading() end
-	if not prompts.snack.Enabled and state.phase == "repair" and Service.owns(state, "vending")
-		and order.snacks < 4 and now >= order.snackUntil then prompts.snack.Enabled = true end
+	for _, bay in world.bays do
+		if Service.passTime(state, elapsed, now, bay.lane) then changed = true end
+		updatePatience(bay)
+		bay.prompts.snack.Enabled = snackAvailable(bay, now)
+	end
+	session:SetAttribute("Rating", state.rating)
+	saveElapsed += elapsed
+	if changed or (state.phase == "service" and saveElapsed > 24) then
+		saves:checkpoint()
+		saveElapsed = 0
+	end
 	elapsed = 0
 end)
 
 local function release(player)
-	if state.driver == player.UserId then drive:leave() end
+	stopArrangement(player)
 	if world.cart.owner == player then Props.parkCart(world) end
-	Repair.release(repair, player.UserId)
-	Service.release(state, player.UserId)
+	local key = toolHeld(player)
+	if key then owners[key] = nil end
+	for _, bay in world.bays do
+		if bay.lane.driver == player.UserId then bay.drive:leave() end
+		Service.release(bay.lane, player.UserId)
+		Repair.release(bay.repair, player.UserId)
+	end
+	player:SetAttribute("GarageDriverBay", nil)
 	refresh()
 end
 
-local spawnOwners = {}
 local function watchPlayer(player)
 	saves:watch(player)
-	if not workshopOwner then
-		workshopOwner = player
-		task.spawn(function()
-			saves:restore(workshopOwner)
-			workshopReady = true
-			if state.phase == "arrival" then
-				arrival()
-			elseif state.phase == "closing" then
-				openMarket()
-			else
-				if state.phase == "vendor" then World.restoreVendor(world) end
-				refresh()
-			end
-		end)
-	end
-	for _, spawn in world.spawns do
-		if not spawnOwners[spawn] then
-			spawnOwners[spawn] = player
-			player.RespawnLocation = spawn
-			if player.Character then player.Character:PivotTo(spawn.CFrame + Vector3.new(0, 3, 0)) end
-			break
-		end
-	end
+	local spawn = world.spawns[(#Players:GetPlayers() - 1) % #world.spawns + 1]
+	player.RespawnLocation = spawn
+	if player.Character then player.Character:PivotTo(spawn.CFrame + Vector3.new(0, 3, 0)) end
 	player.CharacterRemoving:Connect(function() release(player) end)
+	if workshopOwner then return end
+	workshopOwner = player
+	task.spawn(function()
+		saves:restore(workshopOwner)
+		workshopReady = true
+		if session:GetAttribute("Map") ~= state.map then mount()
+		else
+			Props.apply(world, state)
+			Furniture.restore(world, state.furniture[state.map])
+		end
+		if state.phase == "arrival" then
+			state.phase = "service"
+			advance()
+		elseif state.phase == "closing" then
+			openMarket()
+		else
+			if state.phase == "vendor" then World.restoreVendor(world)
+			elseif state.phase == "complete" then World.setEvening(world, true) end
+			refresh()
+		end
+	end)
 end
 
+mount()
+session.Parent = ReplicatedStorage
+saves:bindToClose()
 Players.PlayerAdded:Connect(watchPlayer)
 Players.PlayerRemoving:Connect(function(player)
-	for spawn, owner in spawnOwners do
-		if owner == player then spawnOwners[spawn] = nil end
-	end
 	release(player)
 	equipment[player] = nil
 	task.spawn(function() saves:leaving(player) end)
 	for _, other in Players:GetPlayers() do if other ~= player then return end end
+	if workshopReady then saves:checkpoint() end
 	task.spawn(function() saves:drain(saves.workshop) end)
 end)
-
-refresh()
-session.Parent = ReplicatedStorage
-saves:bindToClose()
 for _, player in Players:GetPlayers() do watchPlayer(player) end
-print("Garage Day · Le Petit Atelier prêt")
+print("Garage Day · Atelier prêt")

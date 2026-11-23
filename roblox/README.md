@@ -1,10 +1,14 @@
 # Garage Day dans Roblox Studio
 
-Le Petit Atelier reprend le plan de la première carte Godot, avec son bureau, sa salle d’attente, ses comptoirs, sa baie de réparation et ses places extérieures. Utilise le téléphone pour ouvrir le service. Le planning à l’accueil affiche les rendez-vous et leur prix. Accueille chaque client, conduis son véhicule d’A 01 à la baie 01, fais l’intervention, gare-le en P 01, puis encaisse à la caisse.
+Deux cartes issues de la version Godot sont disponibles. Le Petit Atelier a une baie. Le Tandem a deux ponts, deux places d’arrivée et deux stationnements de sortie. Au téléphone, **F** au clavier ou **Y** à la manette change de carte avant le premier service ou le soir. Tu conserves ton jour et la caisse.
+
+Le planning à l’accueil affiche les rendez-vous et leur prix. Accueille chaque client, conduis son véhicule de la place d’arrivée au pont correspondant, fais les interventions, puis gare-le sur sa place de sortie et encaisse à la caisse. Au Tandem, les deux voitures peuvent rester à des étapes différentes et passer à la caisse dans l’ordre où tu termines leur réparation.
 
 ## Journées de service
 
-Chaque journée tire un nouveau planning. Une voiture peut demander plusieurs interventions. La caisse verse la facture une fois le véhicule réparé et stationné. Le téléphone permet d’ajouter un rendez-vous en cours de service.
+La campagne dure dix journées. Chaque journée tire un nouveau planning, et une voiture peut demander plusieurs interventions. Le téléphone permet d’ajouter un rendez-vous en cours de service.
+
+Le tableau de service affiche la patience de chaque client. La note du jour part de cinq étoiles. Quand un client n’a plus de patience, le garage perd une demi-étoile, puis une autre toutes les dix secondes tant que sa facture reste ouverte. Les clients peuvent être servis jusqu’à la fermeture, même si la note tombe à zéro. Les notes de chaque journée alimentent le bilan final.
 
 | Dès le jour | Interventions |
 | --- | --- |
@@ -17,19 +21,23 @@ Chaque journée tire un nouveau planning. Une voiture peut demander plusieurs in
 
 Prépare la clé à choc, le bac de vidange, la valise de diagnostic, le manomètre, le cliquet, la sonde ou l’extracteur selon la panne. Les pannes peuvent varier au sein d’une même intervention. Une crevaison peut demander une rustine ou le remplacement de la roue. Une inspection peut mener à un devis pour la batterie.
 
-Les roues démontées peuvent être ramassées, posées, transportées à l’établi ou déposées au recyclage. Le chariot transporte jusqu’à quatre roues neuves. Les bacs séparent l’huile usée, les pneus, les métaux et le recyclage courant. À deux, les rôles se partagent entre conduite, outillage et pièces. Le poste **OBJETS RÉCUPÉRÉS** permet de retrouver les pièces déposées quand un joueur quitte.
+Les roues se détachent du moyeu, s’enclenchent au remontage et basculent dans le bac de recyclage. Les pièces lourdes se portent à deux mains et ralentissent la marche. Le chariot transporte jusqu’à quatre roues neuves. Les bacs séparent l’huile usée, les pneus, les métaux et le recyclage courant. Le poste **OBJETS RÉCUPÉRÉS** permet de retrouver certaines pièces quand un joueur quitte.
 
-Après le dernier client, la caravane propose jusqu’à trois articles sur le parvis. La caisse sert à acheter des améliorations permanentes ou des services pour le lendemain. Le téléphone ouvre la journée suivante.
+Après le dernier client, la caravane propose jusqu’à trois articles sur le parvis. La caisse sert à acheter des améliorations permanentes ou des services pour le lendemain. Le téléphone ouvre la journée suivante, puis affiche le bilan à la fin du jour 10.
+
+Le soir, vise un meuble et utilise l’invite **Déplacer ou pivoter**. Déplace son aperçu, pivote-le par quarts de tour et dépose-le à un emplacement libre. Les outils et les interactions des postes suivent le mobilier.
 
 ## Sauvegarde automatique
 
-Le jeu conserve le jour, le planning, les factures encaissées, la caisse et les achats à la caravane. À la reprise, le premier client dont la facture est encore ouverte revient à l’accueil. Si le service était terminé, la caravane reste disponible avec ses offres du soir. En coop, la progression appartient à l’atelier du premier joueur arrivé. Chaque joueur conserve son propre réglage de souris.
+Le jeu conserve le jour, le planning, les factures encaissées, la caisse, les achats à la caravane, les étoiles et le temps de patience restant. Il enregistre aussi la carte choisie et l’aménagement de chaque garage. À la reprise, les prochains clients dont la facture est ouverte reviennent à l’accueil. Si le service était terminé, la caravane reste disponible avec ses offres du soir. En coop, la progression appartient à l’atelier du premier joueur arrivé. Chaque joueur conserve son propre réglage de souris.
 
 Dans le fichier local de Studio, la sauvegarde passe par le plugin Garage Day - Sauvegarde locale. Sur une autre machine, place le fichier `Garage Day - Sauvegarde locale.rbxmx` généré par la compilation dans le dossier des plugins locaux de Studio, puis relance Studio. Une expérience hébergée utilise les Data Stores Roblox. Les essais dans une expérience publiée depuis Studio utilisent un espace de stockage dédié. [Documentation des Data Stores Roblox](https://create.roblox.com/docs/cloud-services/data-stores)
 
 ## Commandes
 
-À pied, les gants et les objets tenus sont visibles en première personne. Utilise **E** au clavier, **X** à la manette ou l’invite tactile. **Q**, **B** ou **Poser** dépose une pièce ou lâche le chariot. Les invites du chariot indiquent la commande pour charger ou prendre une roue. Les devis ont une commande distincte pour reporter l’intervention.
+À pied, les gants et les objets tenus sont visibles en première personne. Utilise **E** au clavier, **X** à la manette ou l’invite tactile. **Q**, **B** ou **Poser** dépose l’objet que tu tiens ou lâche le chariot. Il faut libérer tes mains pour reprendre un outil, prendre une pièce ou conduire. L’invite **Ranger** permet de rapporter un outil à son poste. Les devis ont leur propre invite pour reporter l’intervention.
+
+En réaménagement, **E** dépose, **R** pivote et **Q** annule. À la manette, utilise **X**, **LB** et **B**. Les mêmes actions apparaissent à l’écran sur mobile.
 
 **O** ouvre les options. Le curseur règle la sensibilité de la souris de **20 % à 130 %**, avec une valeur par défaut de **55 %**. Les trois portes piétonnes s’ouvrent à l’approche et se referment une fois le passage dégagé.
 
@@ -51,7 +59,7 @@ Les scripts se trouvent dans `src/`. Le serveur gère la journée, la circulatio
 
 ## Modèles du garage
 
-La construction reprend les GLB des berlines classique et sport, du pont, du moteur, des roues, du silencieux, de la caravane, des outils et du mobilier. Le parvis, la façade et les maisons s’éclairent à la fermeture. Le serveur prépare les modèles au démarrage. Si les API de maillage sont indisponibles, le jeu charge des formes de remplacement. Les attributs `OriginalModels` et `OriginalServiceModels` du modèle `Le Petit Atelier` indiquent que les modèles principaux et les éléments d’intervention ont été chargés.
+La construction reprend les GLB des berlines classique et sport, du pont, du moteur, des roues, du silencieux, de la caravane, des outils et du mobilier. Le parvis, la façade et les maisons s’éclairent à la fermeture. Le serveur prépare les modèles au démarrage. Si les API de maillage sont indisponibles, le jeu charge des formes de remplacement. Les attributs `OriginalModels` et `OriginalServiceModels` du modèle de la carte indiquent que les modèles principaux et les éléments d’intervention ont été chargés.
 
 Les crédits et les licences des modèles sont dans le [README de Garage Day](../README.md#cr%C3%A9dits-des-assets). Pour tester une future version hébergée avec les modèles originaux, configure le réglage **Mesh / Image APIs** du projet ou importe les GLB dans Studio. [Règles des maillages éditables](https://create.roblox.com/docs/reference/engine/classes/EditableMesh)
 

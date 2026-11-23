@@ -1,7 +1,4 @@
-local Layout = require(script.Parent.PetitAtelier)
-
 local Decor = {}
-local at = Layout.at
 local ink = Color3.fromRGB(34, 61, 62)
 local paper = Color3.fromRGB(255, 239, 203)
 local brass = Color3.fromRGB(228, 179, 99)
@@ -42,6 +39,10 @@ end
 
 local function street(world, part)
 	local room = world.room
+	local layout = world.layout
+	local function at(x, z, y)
+		return layout.at(if x > 18 then x + layout.width - 18 else x, z, y)
+	end
 	part(room, "Terrain du quartier", Vector3.new(350, 1.4, 375), Vector3.new(-1, -1.12, 15),
 		Color3.fromRGB(109, 137, 103), false, Enum.Material.Grass)
 	for _, road in { {37.1, 19.22, 40.85}, {-14, 18.6, -17.6} } do
@@ -132,6 +133,10 @@ end
 
 local function forecourt(world, part)
 	local room = world.room
+	local layout = world.layout
+	local function at(x, z, y)
+		return layout.at(if x >= 18 then x + layout.width - 18 else x, z + (if z > 12 then layout.depth - 13 else 0), y)
+	end
 	local lawn = Color3.fromRGB(107, 136, 86)
 	local leaf = Color3.fromRGB(79, 108, 76)
 	for _, place in { {0.46, 16.20, 5.7}, {5.13, 21.43, 6.8}, {18.49, 17.00, 9.3}, {18.49, 27.44, 13.3}, {1.47, -3.04, 5.5} } do
@@ -153,18 +158,18 @@ local function forecourt(world, part)
 		end
 	end
 	for i = 0, 20 do
-		local row = at(2.5, 16.51 + i * 0.35, 0.021)
+		local row = at(layout.entry, 16.51 + i * 0.35, 0.021)
 		for col = -1, 1 do
 			part(room, "Dalle d’accès", Vector3.new(1.76, 0.037, 1.04), row + Vector3.xAxis * (col * 1.80), tile:Lerp(concrete, (i + col) % 4 / 5),
 				false, Enum.Material.Pavement)
 		end
 	end
-	local vendor = at(15.77, 20.68, 0.017)
+	local vendor = layout.at(layout.vendor[1], layout.vendor[2], 0.017)
 	part(room, "Aire de la caravane", Vector3.new(12.1, 0.04, 17.1), vendor, Color3.fromRGB(124, 126, 112), false, Enum.Material.Pavement)
 	for _, off in { -5.98, 5.98 } do
 		part(room, "Marquage de la caravane", Vector3.new(0.11, 0.022, 16.98), vendor + Vector3.new(off, 0.04, 0), brass)
 	end
-	local stand = part(room, "Plaque de la caravane", Vector3.new(3.48, 1.01, 0.18), at(15.88, 16.55, 2.42), ink)
+	local stand = part(room, "Plaque de la caravane", Vector3.new(3.48, 1.01, 0.18), vendor + Vector3.new(0, 2.40, -12.8), ink)
 	part(room, "Pied de la plaque", Vector3.new(0.20, 2.0, 0.24), stand.Position - Vector3.yAxis * 1.42, ink)
 	sign(stand, Enum.NormalId.Front, "LA CARAVANE", paper, 54)
 	sign(stand, Enum.NormalId.Back, "LA CARAVANE", paper, 54)
@@ -175,14 +180,19 @@ end
 
 local function facade(world, part, cloneMesh)
 	local room = world.room
+	local layout = world.layout
+	local at, depth = layout.at, layout.depth
+	local second = #layout.bays == 2
+	local frontage = if second then 18.5 else 11.5
 	local wood = Color3.fromRGB(157, 124, 87)
-	for _, side in { {12.99, Enum.NormalId.Back, "LE PETIT ATELIER"}, {0.01, Enum.NormalId.Front, "SORTIE · P 01"} } do
+	for _, side in { {depth - 0.01, Enum.NormalId.Back, string.upper(layout.name)},
+		{0.01, Enum.NormalId.Front, if second then "SORTIE · P 01 / P 02" else "SORTIE · P 01"} } do
 		local z, face, label = table.unpack(side)
-		local board = part(room, label, Vector3.new(18.2, 1.29, 0.35), at(11.5, z, 9.31), ink, false, Enum.Material.Metal)
+		local board = part(room, label, Vector3.new(18.2, 1.29, 0.35), at(frontage, z, 9.31), ink, false, Enum.Material.Metal)
 		part(room, "Bordure d’enseigne", Vector3.new(18.1, 0.13, 0.40), board.Position - Vector3.yAxis * 0.62, brass)
 		sign(board, face, label, paper, 135)
 	end
-	local canopy = part(room, "Auvent de l’accueil", Vector3.new(8.03, 0.26, 2.78), at(2.5, 13.18, 7.9), ink, false, Enum.Material.Metal)
+	local canopy = part(room, "Auvent de l’accueil", Vector3.new(8.03, 0.26, 2.78), at(layout.entry, depth + 0.18, 7.9), ink, false, Enum.Material.Metal)
 	part(room, "Bandeau d’accueil", Vector3.new(8.05, 0.67, 0.21), canopy.Position + Vector3.new(0, -0.23, 1.36), ink)
 	local welcome = part(room, "Plaque d’accueil", Vector3.new(6.3, 0.64, 0.18), canopy.Position + Vector3.new(0, -0.23, 1.50), ink)
 	sign(welcome, Enum.NormalId.Back, "ACCUEIL CLIENTS", paper, 50)
@@ -191,42 +201,48 @@ local function facade(world, part, cloneMesh)
 			canopy.Position + Vector3.new(-3.56 + (i - 1) * 1.42, 0.142, 0), brass, false, Enum.Material.Metal)
 		seam.Color = seam.Color:Lerp(ink, 0.38)
 	end
-	for _, x in { 0.5, 4.5 } do
-		part(room, "Équerre d’auvent", Vector3.new(0.16, 1.82, 0.16), at(x, 13.15, 7.09), ink).CFrame *= CFrame.Angles(0.75, 0, 0)
+	for _, x in { layout.entry - 2, layout.entry + 2 } do
+		part(room, "Équerre d’auvent", Vector3.new(0.16, 1.82, 0.16), at(x, depth + 0.15, 7.09), ink).CFrame *= CFrame.Angles(0.75, 0, 0)
 	end
-	for _, side in { {0.13, -1}, {12.96, 1} } do
+	for _, side in { {0.13, -1}, {depth - 0.04, 1} } do
 		local z, direction = table.unpack(side)
-		for _, x in { 0.0, 5.05, if direction > 0 then 8.44 else 8.96, 14.05, 17.96 } do
+		local posts = if second then { 0, 6.98, 12.48, 18.5, 24.0, 27.96 }
+			else { 0, 5.05, if direction > 0 then 8.44 else 8.96, 14.05, 17.96 }
+		for _, x in posts do
 			part(room, "Pilastre de façade", Vector3.new(0.31, 7.95, 0.18), at(x, z + direction * 0.07, 4.06), tile,
 				false, Enum.Material.Brick)
 		end
-		for _, span in { {0.62, 2.84}, {4.69, 5.8}, {7.36, 5.55}, {15.52, 14.24} } do
+		for _, span in (if second then {{1.1, 4.1}, {7.2, 13.8}, {18.5, 8.1}, {25.5, 11.45}}
+			else {{0.62, 2.84}, {4.69, 5.8}, {7.36, 5.55}, {15.52, 14.24}}) do
 			local width = span[2]
 			local position = at(span[1], z + direction * 0.11, 8.53)
 			part(room, "Bandeau de façade", Vector3.new(width, 0.44, 0.19), position, moss, false, Enum.Material.WoodPlanks)
 			part(room, "Corniche", Vector3.new(width + 0.06, 0.10, 0.24), position + Vector3.yAxis * 0.21, brass)
 		end
 	end
-	for _, x in { 0.63, 4.39 } do
-		part(room, "Bac extérieur", Vector3.new(1.85, 0.77, 1.65), at(x, 13.67, 0.39), wood, false, Enum.Material.WoodPlanks)
-		cloneMesh(world.meshes.Plant, room, CFrame.new(at(x, 13.67, 0.38)))
+	for _, x in { layout.entry - 1.87, layout.entry + 1.89 } do
+		part(room, "Bac extérieur", Vector3.new(1.85, 0.77, 1.65), at(x, depth + 0.67, 0.39), wood, false, Enum.Material.WoodPlanks)
+		cloneMesh(world.meshes.Plant, room, CFrame.new(at(x, depth + 0.67, 0.38)))
 	end
-	for _, z in { -0.42, 13.33 } do
-		for _, x in { if z > 0 then 9.81 else 9.59, 13.43 } do
-			part(room, "Borne de protection", Vector3.new(0.31, 1.65, 0.31), at(x, z, 0.83), brass, false, Enum.Material.Metal)
-			part(room, "Bande de borne", Vector3.new(0.326, 0.24, 0.326), at(x, z, 1.18), ink)
+	for _, bay in layout.bays do
+		for _, z in { -0.42, depth + 0.33 } do
+			for _, x in { bay.x - 1.84, bay.x + 1.93 } do
+				part(room, "Borne de protection", Vector3.new(0.31, 1.65, 0.31), at(x, z, 0.83), brass, false, Enum.Material.Metal)
+				part(room, "Bande de borne", Vector3.new(0.326, 0.24, 0.326), at(x, z, 1.18), ink)
+			end
+		end
+		for _, z in { 24.94, -9.77 } do
+			for _, x in { bay.x - 2.1, bay.x + 2.12 } do
+				cloneMesh(world.meshes.Cone, room, CFrame.new(at(x, z)))
+			end
 		end
 	end
-	for _, p in { {9.32, 24.94}, {13.55, 24.95}, {9.33, -9.77}, {13.82, -9.75} } do
-		local position = at(p[1], p[2])
-		cloneMesh(world.meshes.Cone, room, CFrame.new(position))
-	end
 	local line = Color3.fromRGB(233, 221, 183)
-	for z = 14.2, 16.0, 0.36 do
-		part(room, "Passage piéton", Vector3.new(5.7, 0.015, 0.48), at(2.5, z, 0.006), line)
+	for z = depth + 1.2, depth + 3, 0.36 do
+		part(room, "Passage piéton", Vector3.new(5.7, 0.015, 0.48), at(layout.entry, z, 0.006), line)
 	end
-	for _, x in { 2.5, 8.2, 12.5, 16.0 } do
-		for _, z in { 2.2, 6.35, 10.2 } do
+	for _, x in layout.lamps do
+		for _, z in layout.lampRows do
 			cloneMesh(world.meshes.ShopLight, room, CFrame.new(at(x, z, 9.54)) * CFrame.Angles(0, math.pi / 2, 0))
 		end
 	end
@@ -238,7 +254,8 @@ function Decor.build(world, part, cloneMesh)
 	forecourt(world, part)
 	facade(world, part, cloneMesh)
 
-	local panel = part(world.room, "Planning du garage", Vector3.new(7.12, 4.76, 0.13), at(4.81, 10.25, 6.15), ink, false, Enum.Material.Wood)
+	local x, z = table.unpack(world.layout.board)
+	local panel = part(world.room, "Planning du garage", Vector3.new(7.12, 4.76, 0.13), world.layout.at(x, z, 6.15), ink, false, Enum.Material.Wood)
 	panel.CFrame = CFrame.lookAt(panel.Position, panel.Position - Vector3.xAxis)
 	local ui = surface(panel, Enum.NormalId.Front, Vector2.new(630, 416), 42)
 	local header = letter(ui, "Planning du garage", UDim2.fromScale(0.06, 0.05), UDim2.fromScale(0.86, 0.11), paper, Enum.Font.GothamBold)
@@ -286,12 +303,15 @@ function Decor.updateBoard(world, state, jobs)
 		local order = state.orders[i]
 		row.Visible = order ~= nil
 		if order then
-			local current = state.day > 0 and i == state.ticket and i > state.served
+			local current
+			for _, bay in world.bays do
+				if bay.lane and bay.lane.ticket == i then current = "B" .. bay.id break end
+			end
 			local summary = {}
 			for _, key in order.jobs do table.insert(summary, jobs[key].name) end
-			local prefix = if order.paid then "✓  " elseif current then "→  " else ""
+			local prefix = if order.paid then "✓  " elseif current then current .. "  " else ""
 			row.Text = string.format("%s%s · %s · %d $", prefix, order.name, table.concat(summary, " / "), order.estimate)
-			row.TextColor3 = if current then brass elseif i <= state.served then Color3.fromRGB(170, 218, 187) else paper
+			row.TextColor3 = if order.paid then Color3.fromRGB(170, 218, 187) elseif current then brass else paper
 		end
 	end
 end

@@ -1,11 +1,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Gear = require(script.Parent.GearWorld)
-local Layout = require(script.Parent.PetitAtelier)
+local Furniture = require(script.Parent.Furniture)
 local Service = require(ReplicatedStorage.GarageDay.Service)
 
 local Props = {}
-local at = Layout.at
 local teal = Color3.fromRGB(50, 87, 88)
 local gold = Color3.fromRGB(234, 164, 85)
 local steel = Color3.fromRGB(58, 68, 69)
@@ -14,7 +13,7 @@ local ivory = Color3.fromRGB(238, 224, 195)
 local red = Color3.fromRGB(150, 68, 52)
 
 local function makeCart(world, part, model, cloneMesh, target, sign)
-	local home = at(table.unpack(Layout.stations.cart))
+	local home = world.layout.at(table.unpack(world.layout.stations.cart))
 	local cart = model(world.room, "Chariot à pneus", CFrame.new(home))
 	if not cloneMesh(world.meshes.Trolley, cart, CFrame.new(home)) then
 		part(cart, "Plateau", Vector3.new(2.67, 0.20, 2.13), home + Vector3.yAxis * 0.46, red)
@@ -30,12 +29,14 @@ local function makeCart(world, part, model, cloneMesh, target, sign)
 	world.cart = { model = cart, stock = 0, tires = tires, owner = nil, driver = nil, oldSpeed = nil }
 	world.targets.Cart = target(cart, "Poignée du chariot", home + Vector3.new(0, 2.52, 1.06))
 	sign(world.targets.Cart, "CHARIOT", 1.35, 19)
+	Furniture.add(world, "cart", cart, Vector3.new(2.75, 2.8, 2.53), target)
 end
 
 local function makeVendor(world, part, model, cloneMesh, target, sign)
-	local position = at(15.87, 20.55)
+	local at = world.layout.at
+	local position = at(table.unpack(world.layout.vendor))
 	world.vendorParking = CFrame.new(position)
-	world.vendorEntry = CFrame.new(at(22.06, 36.1)) * CFrame.Angles(0, math.rad(36), 0)
+	world.vendorEntry = CFrame.new(at(world.layout.width + 4.06, 36.1)) * CFrame.Angles(0, math.rad(36), 0)
 	local vendor = model(nil, "La Caravane", world.vendorParking)
 	world.vendor = vendor
 	local copy = cloneMesh(world.meshes.Delivery, vendor, world.vendorParking)
@@ -64,16 +65,21 @@ local function makeVendor(world, part, model, cloneMesh, target, sign)
 end
 
 local function makeUpgrades(world, part, model, target, sign)
-	local position = at(6.23, 4.12)
+	local function at(id)
+		return world.layout.at(table.unpack(world.layout.stations[id]))
+	end
+	local position = at("doubleCounter")
 	local counters = model(nil, "Desserte double", CFrame.new(position))
 	for _, name in { "Counter1", "Counter2" } do
 		local top = world.slots[name].Position
+		world.targets[name].Parent.Parent = counters
 		part(counters, "Plateau", Vector3.new(1.9, 0.19, 2.14), top - Vector3.yAxis * 0.50, teal, true)
 		for _, corner in { Vector3.new(-0.73, 0, -0.81), Vector3.new(0.73, 0, 0.81) } do
 			part(counters, "Pied", Vector3.new(0.14, 2.01, 0.15), top + corner - Vector3.yAxis * 1.58, steel)
 		end
 	end
-	local vendingPoint = at(3.73, 5.30)
+	Furniture.add(world, "doubleCounter", counters, Vector3.new(2.05, 2.64, 4.95), target)
+	local vendingPoint = at("vending")
 	local vending = model(nil, "Distributrice", CFrame.new(vendingPoint))
 	part(vending, "Distributrice", Vector3.new(2.4, 5.15, 1.60), vendingPoint + Vector3.yAxis * 2.58, teal, true)
 	part(vending, "Vitrine", Vector3.new(1.89, 2.70, 0.14), vendingPoint + Vector3.new(0, 3.31, -0.85), ivory)
@@ -86,19 +92,23 @@ local function makeUpgrades(world, part, model, target, sign)
 	part(vending, "Trappe", Vector3.new(1.48, 0.42, 0.15), vendingPoint + Vector3.new(0, 0.86, -0.85), steel)
 	world.targets.Snack = target(vending, "Collation", vendingPoint + Vector3.new(0, 3.13, -1.14))
 	sign(world.targets.Snack, "COLLATIONS", 2.32, 20)
+	Furniture.add(world, "vending", vending, Vector3.new(2.4, 5.15, 1.9), target)
 
-	local magazinePoint = at(1.17, 6.67)
+	local magazinePoint = at("magazines")
 	local magazines = model(nil, "Porte-magazines", CFrame.new(magazinePoint))
 	part(magazines, "Présentoir", Vector3.new(1.77, 1.71, 0.40), magazinePoint + Vector3.yAxis * 1.30, steel)
 	for i, color in { red, gold, teal } do
 		part(magazines, "Magazine", Vector3.new(0.46, 0.89, 0.19), magazinePoint + Vector3.new((i - 2) * 0.48, 1.98, -0.22), color)
 	end
+	Furniture.add(world, "magazines", magazines, Vector3.new(1.77, 2.5, 0.65), target)
 	local lounge = model(nil, "Salle d’attente confort")
+	local waiting = at("waitingBench")
 	for _, offset in { -0.56, 0.55 } do
-		local cushion = part(lounge, "Coussin", Vector3.new(0.79, 0.26, 0.80), at(1.58, 5.50, 1.50) + Vector3.zAxis * offset, gold)
+		local cushion = part(lounge, "Coussin", Vector3.new(0.79, 0.26, 0.80), waiting + Vector3.new(0.25, 1.5, offset), gold)
 		cushion.CFrame *= CFrame.Angles(0.06, 0.1, 0.12)
 	end
-	part(lounge, "Tapis", Vector3.new(3.2, 0.048, 4.01), at(2.43, 5.65, 0.077), red, false, Enum.Material.Fabric)
+	part(lounge, "Tapis", Vector3.new(3.2, 0.048, 4.01), waiting + Vector3.new(2.883, 0.077, 0.465), red, false, Enum.Material.Fabric)
+	lounge.WorldPivot = world.furniture.waitingBench.home
 	world.upgradeProps = { counter = counters, vending = vending, magazines = magazines, lounge = lounge }
 end
 
@@ -110,8 +120,9 @@ end
 
 function Props.apply(world, state)
 	for key, prop in world.upgradeProps do
-		local parent = if Service.owns(state, key) then world.room else nil
+		local parent = if Service.owns(state, key) then (if key == "lounge" then world.furniture.waitingBench.model else world.room) else nil
 		if prop.Parent ~= parent then prop.Parent = parent end
+		if parent and key == "lounge" then prop:PivotTo(parent:GetPivot()) end
 	end
 	if world.compressor and Service.owns(state, "compressor") then world.compressor.Color = Color3.fromRGB(195, 228, 209) end
 end

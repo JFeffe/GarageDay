@@ -188,7 +188,8 @@ task.spawn(function()
 	while gui.Parent do
 		task.wait(0.35)
 		if gui.Enabled then
-			local room = workspace:FindFirstChild("Le Petit Atelier")
+			local map = session:GetAttribute("MapName")
+			local room = map and workspace:FindFirstChild(map)
 			local vendor = room and room:FindFirstChild("La Caravane")
 			local point = vendor and vendor:FindFirstChild("Comptoir")
 			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")

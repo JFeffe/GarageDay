@@ -166,7 +166,8 @@ updateStatus()
 
 local priority = Enum.ContextActionPriority.High.Value + 2
 local function setOpen(open)
-	if open and (playerGui:GetAttribute("CaravaneOpen") or session:GetAttribute("Driver") == player.UserId) then return end
+	if open and (playerGui:GetAttribute("CaravaneOpen") or player:GetAttribute("GarageDriverBay")
+		or player:GetAttribute("GarageHeldKind") == "furniture") then return end
 	if backdrop.Visible == open then return end
 	backdrop.Visible, openButton.Visible = open, not open
 	playerGui:SetAttribute("WorkshopOptionsOpen", open)
@@ -190,8 +191,8 @@ player.CharacterRemoving:Connect(function() setOpen(false) end)
 playerGui:GetAttributeChangedSignal("CaravaneOpen"):Connect(function()
 	if playerGui:GetAttribute("CaravaneOpen") then setOpen(false) end
 end)
-session:GetAttributeChangedSignal("Driver"):Connect(function()
-	local driving = session:GetAttribute("Driver") == player.UserId
+player:GetAttributeChangedSignal("GarageDriverBay"):Connect(function()
+	local driving = player:GetAttribute("GarageDriverBay") ~= nil
 	if driving then setOpen(false) end
 	openButton.Visible = not driving and not backdrop.Visible
 end)

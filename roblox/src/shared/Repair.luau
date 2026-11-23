@@ -118,7 +118,7 @@ end
 
 local function swap(line: { Step }, component: string, target: string, old: string, new: string, bin: string, tool: string?)
 	table.insert(line, step("remove_" .. component, "Retirer · " .. cargo[old].name, target, 0.68,
-		{ tool = tool, output = old, component = component, componentState = "removed" }))
+		{ tool = tool, output = old, leaveAt = if tool then "Workpiece" else nil, component = component, componentState = "removed" }))
 	table.insert(line, recycle(old, bin))
 	table.insert(line, step("fit_" .. component, "Poser · " .. cargo[new].name, target, 0.85,
 		{ cargo = new, component = component, componentState = "new" }))
@@ -278,8 +278,8 @@ local jobs: { [string]: JobSpec } = {
 
 Repair.jobs = table.freeze(jobs)
 
-function Repair.new(job: string, faults: Faults?): State
-	return { job = job, steps = jobs[job].steps(faults or {}), index = 1, tools = {}, carried = {}, placements = {},
+function Repair.new(job: string, faults: Faults?, toolOwners: { [string]: number }?): State
+	return { job = job, steps = jobs[job].steps(faults or {}), index = 1, tools = toolOwners or {}, carried = {}, placements = {},
 		moving = false, raised = false, hoodOpen = false, wheels = {}, components = {}, note = "", pressure = nil,
 		billable = true, addBattery = false, surcharge = 0 }
 end
@@ -311,9 +311,8 @@ function Repair.canTakeTool(state: State, key: string): boolean
 end
 
 function Repair.takeTool(state: State, playerId: number, key: string): boolean
-	if playerId == 0 or not Repair.canTakeTool(state, key) then return false end
-	local previous = Repair.using(state, playerId)
-	if previous then state.tools[previous] = nil end
+	if playerId == 0 or Repair.using(state, playerId) or Repair.carrying(state, playerId)
+		or not Repair.canTakeTool(state, key) then return false end
 	state.tools[key] = playerId
 	return true
 end
@@ -340,7 +339,7 @@ function Repair.source(state: State, item: string): string?
 end
 
 function Repair.take(state: State, playerId: number, item: string): boolean
-	if playerId == 0 or Repair.carrying(state, playerId) or not Repair.source(state, item) then return false end
+	if playerId == 0 or Repair.using(state, playerId) or Repair.carrying(state, playerId) or not Repair.source(state, item) then return false end
 	state.placements[item] = nil
 	state.carried[item] = playerId
 	return true
@@ -356,7 +355,7 @@ function Repair.drop(state: State, playerId: number, place: string): string?
 end
 
 function Repair.needsEmptyHands(step: Step): boolean
-	return step.cargo == nil and (step.tool ~= nil or (step.output ~= nil and step.leaveAt == nil))
+	return step.cargo == nil and step.tool == nil and step.output ~= nil
 end
 
 function Repair.act(state: State, playerId: number, action: string): boolean
@@ -364,7 +363,7 @@ function Repair.act(state: State, playerId: number, action: string): boolean
 	if not current or state.moving or playerId == 0 or current.action ~= action then return false end
 	if current.tool and state.tools[current.tool] ~= playerId then return false end
 	if current.cargo and state.carried[current.cargo] ~= playerId then return false end
-	if Repair.needsEmptyHands(current) and Repair.carrying(state, playerId) then return false end
+	if Repair.needsEmptyHands(current) and (Repair.carrying(state, playerId) or Repair.using(state, playerId)) then return false end
 	if current.motion then
 		state.moving = true
 		return true

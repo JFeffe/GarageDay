@@ -1,4 +1,11 @@
-local Layout = {}
+local Layout = {
+	name = "Le Petit Atelier", width = 18, depth = 13, wing = 4.9,
+	origin = Vector2.new(11.5, 6.5), entry = 2.5, exit = 6.7,
+	officeSplit = 3.9, receptionSplit = 7.8,
+	shopPassage = {4.8, 7.6},
+	lamps = { 2.5, 8.2, 12.5, 16 }, lampRows = { 2.2, 6.35, 10.2 },
+	vendor = { 15.87, 20.55 }, board = { 4.81, 10.25 },
+}
 
 local scale = 3.1
 Layout.scale = scale
@@ -36,11 +43,17 @@ Layout.stations = {
 	bench = {7.5, 5.5}, cart = {7.5, 8.5}, partsChassis = {6.5, 10.5}, partsElectric = {7.5, 10.5},
 	toolWrench = {16.5, 2.5}, toolPressure = {16.5, 3.5}, toolInspection = {16.5, 1.5}, toolOil = {16.5, 4.5},
 	counter = {16.5, 6.5}, wasteOil = {16.5, 8.5}, trash = {16.5, 9.5},
+	recycling = {16.5, 10.53}, compressor = {16.73, 0.72}, toolPanel = {17.16, 5.97},
+	tireRack = {7.02, 1.61}, longShelf = {6.38, 7.58}, recovery = {6.12, 2.93}, wheelStand = {7.93, 6.72},
+	tireBin = {16.58, 15.32}, scrap = {16.7, 12.2}, doubleCounter = {6.23, 4.12},
+	vending = {3.73, 5.3}, magazines = {1.17, 6.67},
 }
 
 Layout.arrivals = { {9.8, 24.9, 3.4, 5.9}, {13.8, 24.9, 3.4, 5.9}, {5.8, 24.9, 3.4, 5.9} }
-Layout.parking = {9.8, -10.45, 3.4, 5.9}
-Layout.bay = {9.9, 4.11, 3.2, 4.78}
+Layout.bays = { {
+	x = 11.5, z = 6.5, lever = {14.5, 10}, intake = 12.93,
+	dock = {9.9, 4.11, 3.2, 4.78}, parking = {9.8, -10.45, 3.4, 5.9}, arrival = Layout.arrivals[1],
+} }
 
 function Layout.centre(rect, height)
 	return Layout.at(rect[1] + rect[3] / 2, rect[2] + rect[4] / 2, height)

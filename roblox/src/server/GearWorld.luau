@@ -1,10 +1,10 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Layout = require(script.Parent.PetitAtelier)
+local TweenService = game:GetService("TweenService")
+local Furniture = require(script.Parent.Furniture)
 local Repair = require(ReplicatedStorage.GarageDay.Repair)
 
 local Gear = {}
-local at = Layout.at
 local dark = Color3.fromRGB(34, 51, 53)
 local metal = Color3.fromRGB(157, 169, 165)
 local blue = Color3.fromRGB(77, 151, 166)
@@ -164,75 +164,84 @@ function Gear.place(world, key, parent, pose)
 	return gear
 end
 
-local function slot(world, name, position, target)
+local function slot(world, name, position, target, parent)
 	world.slots[name] = CFrame.new(position)
-	world.targets[name] = target(world.room, name, position + Vector3.yAxis * 0.4)
+	world.targets[name] = target(parent or world.room, name, position + Vector3.yAxis * 0.4)
 end
 
-function Gear.build(world, part, cloneMesh, target, sign)
+function Gear.build(world, part, cloneMesh, target, sign, model)
 	world.gearTemplates = buildTemplates(world, part, cloneMesh)
-	world.stocks, world.slots, world.placed, world.drops = {}, {}, {}, {}
+	world.stocks, world.slots, world.toolDrops = {}, {}, {}
 	world.gearTarget = target
-	local tools = {
-		impact = at(16.5, 2.5, 2.98), inspection = at(16.5, 1.5, 2.83), pressure = at(16.5, 3.5, 2.91),
-		ratchet = at(17.16, 5.18, 3.67), probe = at(17.16, 5.95, 3.64), puller = at(17.16, 6.73, 3.69),
-	}
-	for key, position in tools do
-		local spec = Repair.tools[key]
-		local pose = CFrame.new(position) * CFrame.Angles(0, -math.pi / 2, 0)
-		world.stocks[key] = Gear.place(world, key, world.room, pose)
-		world.targets[spec.target] = target(world.room, spec.target, position + Vector3.new(-0.64, 0.27, 0))
+	local layout = world.layout
+	local function at(id, x, z, height)
+		local home = layout.stations[id]
+		return layout.at(home[1] + x, home[2] + z, height)
 	end
-	sign(target(world.room, "Poste d’outillage", at(16.24, 3.58, 5.08)), "OUTILLAGE", 0, 24)
-	part(world.room, "Panneau d’outillage", Vector3.new(0.14, 1.67, 6.24), at(17.69, 5.97, 3.78), dark)
+	local function furnish(id, title, size)
+		local actor = model(world.room, title, CFrame.new(at(id, 0, 0, 0)))
+		Furniture.add(world, id, actor, size, target)
+		return actor
+	end
+	local panel = furnish("toolPanel", "Panneau d’outillage", Vector3.new(0.45, 4.6, 6.24))
+	local tireRack = furnish("tireRack", "Rack des pneus", Vector3.new(5.4, 2.56, 2.58))
+	local longShelf = furnish("longShelf", "Rayon pièces longues", Vector3.new(2.62, 2.4, 8.05))
+	local stand = furnish("wheelStand", "Support de roue", Vector3.new(2.23, 0.46, 2.27))
+	local function makeStock(key, spec, data, isTool)
+		local id, x, z, height = table.unpack(data)
+		local parent = world.furniture[id].model
+		local position = at(id, x, z, height)
+		local turn = if isTool then -math.pi / 2 else 0
+		local pose = CFrame.new(position) * CFrame.Angles(0, turn, 0)
+		local visual = Gear.place(world, key, parent, pose)
+		world.stocks[key] = { model = visual, parent = parent, pose = parent:GetPivot():ToObjectSpace(pose) }
+		local offset = if isTool then Vector3.new(-0.64, 0.27, 0) else Vector3.new(0, 0.27, -0.25)
+		if key == "newTire" then offset = Vector3.new(0, 0.48, 1.35) end
+		world.targets[spec.target] = target(parent, spec.target, position + offset)
+	end
+	local tools = {
+		impact = {"toolWrench", 0, 0, 2.98}, inspection = {"toolInspection", 0, 0, 2.83}, pressure = {"toolPressure", 0, 0, 2.91},
+		ratchet = {"toolPanel", 0, -0.79, 3.67}, probe = {"toolPanel", 0, -0.02, 3.64}, puller = {"toolPanel", 0, 0.76, 3.69},
+	}
+	for key, data in tools do makeStock(key, Repair.tools[key], data, true) end
+	sign(target(panel, "Poste d’outillage", at("toolPanel", 0, 0, 5.08)), "OUTILLAGE", 0, 24)
+	part(panel, "Panneau d’outillage", Vector3.new(0.14, 1.67, 6.24), at("toolPanel", 0.32, 0, 3.78), dark, true)
 
 	local supplies = {
-		pads = at(6.5, 10.08, 3.01), pan = at(16.5, 4.5, 2.53), freshOil = at(16.13, 6.73, 3.03),
-		newBattery = at(7.5, 10.06, 3.17), coolant = at(16.12, 6.34, 3.02),
-		patch = at(6.41, 10.07, 2.02), newBearing = at(6.73, 10.07, 2.02), newMuffler = at(6.38, 7.58, 1.71),
-		newDamper = at(6.18, 6.61, 1.97), newShield = at(6.34, 8.64, 1.77),
-		newBelt = at(7.41, 10.08, 1.96), newWipers = at(7.5, 10.06, 2.50),
-		frontBulb = at(7.34, 10.06, 1.24), rearBulb = at(7.64, 10.06, 1.24), newWindow = at(7.56, 10.08, 3.57),
-		newTire = at(7.62, 1.61, 1.36),
+		pads = {"partsChassis", 0, -0.42, 3.01}, pan = {"toolOil", 0, 0, 2.53}, freshOil = {"counter", -0.37, 0.23, 3.03},
+		newBattery = {"partsElectric", 0, -0.44, 3.17}, coolant = {"counter", -0.38, -0.16, 3.02},
+		patch = {"partsChassis", -0.09, -0.43, 2.02}, newBearing = {"partsChassis", 0.23, -0.43, 2.02},
+		newMuffler = {"longShelf", 0, 0, 1.71}, newDamper = {"longShelf", -0.20, -0.97, 1.97}, newShield = {"longShelf", -0.04, 1.06, 1.77},
+		newBelt = {"partsElectric", -0.09, -0.42, 1.96}, newWipers = {"partsElectric", 0, -0.44, 2.50},
+		frontBulb = {"partsElectric", -0.16, -0.44, 1.24}, rearBulb = {"partsElectric", 0.14, -0.44, 1.24},
+		newWindow = {"partsElectric", 0.06, -0.42, 3.57}, newTire = {"tireRack", 0.6, 0, 1.36},
 	}
-	for key, position in supplies do
-		local spec = Repair.cargo[key]
-		world.stocks[key] = Gear.place(world, key, world.room, CFrame.new(position))
-		local offset = if position.X > 10 then Vector3.new(-0.82, 0.38, 0) else Vector3.new(0, 0.27, -0.25)
-		if key == "newTire" then offset = Vector3.new(0, 0.48, 1.35) end
-		world.targets[spec.target] = target(world.room, spec.target, position + offset)
-	end
+	for key, data in supplies do makeStock(key, Repair.cargo[key], data, false) end
 	sign(world.targets.Pads, "CHÂSSIS", 1.04, 25)
 	sign(world.targets.BatteryStock, "ÉLECTRICITÉ", 1.02, 25)
 	sign(world.targets.OilPan, "VIDANGE", 0.93, 25)
 	sign(world.targets.CoolantStock, "FLUIDES", 1.32, 23)
 	sign(world.targets.TireRack, "PNEUS NEUFS", 1.67, 26)
-	cloneMesh(world.meshes.OilCrate, world.room, CFrame.new(at(16.7, 6.52, 2.57)))
+	cloneMesh(world.meshes.OilCrate, world.furniture.counter.model, CFrame.new(at("counter", 0.20, 0.02, 2.57)))
 
-	part(world.room, "Rack des pneus", Vector3.new(5.4, 0.17, 2.58), at(7.02, 1.61, 0.21), metal, true)
-	for _, x in { 6.57, 7.10, 7.45 } do
-		Gear.place(world, "newTire", world.room, CFrame.new(at(x, 1.61, 1.37)))
+	part(tireRack, "Rack des pneus", Vector3.new(5.4, 0.17, 2.58), at("tireRack", 0, 0, 0.21), metal, true)
+	for _, x in { -0.45, 0.08, 0.43 } do
+		Gear.place(world, "newTire", tireRack, CFrame.new(at("tireRack", x, 0, 1.37)))
 	end
-	part(world.room, "Rayon pièces longues", Vector3.new(2.62, 0.16, 8.05), at(6.38, 7.58, 1.39), dark, true)
+	part(longShelf, "Rayon pièces longues", Vector3.new(2.62, 0.16, 8.05), at("longShelf", 0, 0, 1.39), dark, true)
 
-	slot(world, "Bench", at(7.5, 5.5, 3.23), target)
-	slot(world, "WheelStand", at(7.93, 6.72, 1.04), target)
-	slot(world, "UsedPan", Vector3.new(0, 0.28, -7.35), target)
-	slot(world, "Recovery", at(6.12, 2.93, 0.38), target)
-	slot(world, "Counter1", at(6.23, 4.55, 2.64), target)
-	slot(world, "Counter2", at(6.23, 3.70, 2.64), target)
-	part(world.room, "Support de roue", Vector3.new(2.23, 0.23, 2.27), world.slots.WheelStand.Position - Vector3.yAxis * 0.93, dark)
+	slot(world, "Bench", at("bench", 0, 0, 3.23), target, world.furniture.bench.model)
+	slot(world, "WheelStand", at("wheelStand", 0, 0, 1.04), target, stand)
+	slot(world, "Recovery", at("recovery", 0, 0, 0.38), target)
+	slot(world, "Counter1", at("doubleCounter", 0, 0.43, 2.64), target)
+	slot(world, "Counter2", at("doubleCounter", 0, -0.42, 2.64), target)
+	part(stand, "Support de roue", Vector3.new(2.23, 0.23, 2.27), world.slots.WheelStand.Position - Vector3.yAxis * 0.93, dark)
 	sign(world.targets.WheelStand, "SUPPORT DE ROUE", 1.15, 23)
 	sign(world.targets.Bench, "ÉTABLI", 1.55, 24)
 	sign(world.targets.Recovery, "OBJETS RÉCUPÉRÉS", 1.65, 20)
-	for _, wheel in Repair.wheels do
-		local side = if wheel:find("Left") then -1 else 1
-		local z = if wheel:find("Front") then -4.35 else 4.08
-		slot(world, "Floor" .. wheel, Vector3.new(side * 6.52, 0.43, z), target)
-	end
 
-	local tireBin = at(16.58, 15.32, 0.68)
-	local scrap = at(16.70, 12.20, 0.61)
+	local tireBin = at("tireBin", 0, 0, 0.68)
+	local scrap = at("scrap", 0, 0, 0.61)
 	for _, storage in { {"TireBin", "PNEUS USÉS", tireBin, 3.68}, {"Scrap", "MÉTAUX", scrap, 2.67} } do
 		local key, label, position, width = table.unpack(storage)
 		part(world.room, label, Vector3.new(width, 1.14, 1.7), position, dark, true, Enum.Material.Metal)
@@ -249,18 +258,74 @@ function Gear.build(world, part, cloneMesh, target, sign)
 	world.recycled = 0
 end
 
+function Gear.buildBay(world)
+	world.slots, world.placed, world.drops, world.pieceMotion = {}, {}, {}, {}
+	local dock = world.dockPose.Position
+	world.slots.UsedPan = CFrame.new(dock + Vector3.new(0, 0.28, -7.35))
+	for _, wheel in Repair.wheels do
+		local side = if wheel:find("Left") then -1 else 1
+		local z = if wheel:find("Front") then -4.35 else 4.08
+		world.slots["Floor" .. wheel] = CFrame.new(dock + Vector3.new(side * 6.52, 0.43, z))
+	end
+end
+
+local function animate(model, from, to, seconds, style)
+	model:PivotTo(from)
+	local pivot = Instance.new("CFrameValue")
+	pivot.Value = from
+	local change = pivot.Changed:Connect(function(value)
+		if model.Parent then model:PivotTo(value) end
+	end)
+	local tween = TweenService:Create(pivot, TweenInfo.new(seconds, style, Enum.EasingDirection.In), { Value = to })
+	tween.Completed:Once(function()
+		change:Disconnect()
+		pivot:Destroy()
+	end)
+	tween:Play()
+end
+
+function Gear.toss(world, key, from, to)
+	local visual = Gear.place(world, key, world.room, to)
+	animate(visual, from, to, 0.32, Enum.EasingStyle.Quad)
+	task.delay(0.36, function() visual:Destroy() end)
+end
+
 function Gear.recycle(world, item)
 	if item ~= "serviceWheel" and item ~= "usedTire" then return end
 	world.recycled = math.min(#world.scrapVisuals, world.recycled + 1)
 	world.scrapVisuals[world.recycled].Parent = world.room
 end
 
-function Gear.sync(world, repair)
-	for key, model in world.stocks do
-		local used = repair.tools[key] or repair.carried[key] or repair.placements[key]
-		local parent = if used then nil else world.room
-		if model.Parent ~= parent then model.Parent = parent end
+function Gear.syncStocks(world, owners)
+	for key in Repair.tools do
+		local stock = world.stocks[key]
+		local parent = if owners[key] or world.toolDrops[key] then nil else stock.parent
+		if stock.model.Parent ~= parent then
+			stock.model.Parent = parent
+			if parent then stock.model:PivotTo(parent:GetPivot() * stock.pose) end
+		end
 	end
+end
+
+function Gear.dropTool(world, key, pose, from)
+	local visual = Gear.place(world, key, world.room, pose)
+	if from then animate(visual, from, pose, 0.22, Enum.EasingStyle.Quad) end
+	local anchor = world.gearTarget(visual, "Outil déposé", pose.Position + Vector3.yAxis * 0.43)
+	-- Keep the pickup stable during the final settling motion.
+	anchor.Parent.Parent = world.room
+	world.toolDrops[key] = { visual = visual, anchor = anchor }
+end
+
+function Gear.clearTool(world, key, prompt)
+	local drop = world.toolDrops[key]
+	if not drop then return end
+	prompt.Parent = nil
+	drop.visual:Destroy()
+	drop.anchor.Parent:Destroy()
+	world.toolDrops[key] = nil
+end
+
+function Gear.sync(world, repair)
 	for key, old in world.placed do
 		if old.location ~= repair.placements[key] then
 			for _, child in old.anchor:GetChildren() do
@@ -273,11 +338,18 @@ function Gear.sync(world, repair)
 	end
 	for key, location in repair.placements do
 		if not world.placed[key] then
-			local pose = if location == "Ground" then world.drops[key] else world.slots[location]
-			pose = pose or world.slots.Recovery
+			local shared = world.root.slots[location] and world.targets[location]
+			local pose = if location == "Ground" or location == "Workpiece" then world.drops[key] else world.slots[location]
+			if shared then pose = shared.WorldCFrame - Vector3.yAxis * 0.4 end
+			pose = pose or world.targets.Recovery.WorldCFrame - Vector3.yAxis * 0.4
 			local wheel = key == "newTire" or key == "usedTire" or key == "serviceWheel"
 			if wheel and location ~= "WheelStand" then pose *= zUp end
 			local visual = Gear.place(world, key, world.room, pose)
+			local origin = world.pieceMotion[key]
+			if origin then
+				animate(visual, origin, pose, if wheel then 0.38 else 0.24, Enum.EasingStyle.Quad)
+				world.pieceMotion[key] = nil
+			end
 			local offset = if location == "Bench" then Vector3.new(0, 0.50, 0.9) else Vector3.yAxis * 0.6
 			local anchor = world.gearTarget(world.room, "Objet déposé · " .. key, pose.Position + offset)
 			world.placed[key] = { location = location, visual = visual, anchor = anchor }

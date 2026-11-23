@@ -1,6 +1,5 @@
 local TweenService = game:GetService("TweenService")
 
-local Layout = require(script.Parent.PetitAtelier)
 local Doors = {}
 local metal = Color3.fromRGB(41, 70, 68)
 local glass = Color3.fromRGB(158, 193, 190)
@@ -26,11 +25,11 @@ local function leaf(door, part, centre, width, height, direction)
 	for _, piece in panel do table.insert(door.panels, piece) end
 end
 
-function Doors.build(room, part, model, height)
+function Doors.build(room, part, model, height, layout)
 	local doors = {}
-	for _, spec in Layout.pedestrianDoors do
-		local center = Layout.at((spec.left + spec.right) / 2, spec.z + (if spec.outside == 1 then 0.18 else 0))
-		local edge = (spec.right - spec.left) * Layout.scale / 2
+	for _, spec in layout.pedestrianDoors do
+		local center = layout.at((spec.left + spec.right) / 2, spec.z + (if spec.outside == 1 then 0.18 else 0))
+		local edge = (spec.right - spec.left) * layout.scale / 2
 		local frame = model(room, spec.name, CFrame.new(center))
 		frame:SetAttribute("Ouverte", false)
 		for _, side in { -1, 1 } do

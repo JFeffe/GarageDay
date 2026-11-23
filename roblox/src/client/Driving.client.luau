@@ -7,6 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local session = ReplicatedStorage:WaitForChild("GarageDaySession")
 local remote = session:WaitForChild("DriveControl")
+local bays = session:WaitForChild("Bays")
 local keys = {}
 local stick = Vector2.zero
 local active = false
@@ -83,8 +84,9 @@ local function commandInput(name, inputState)
 end
 
 local function frame(dt)
-	local room = workspace:FindFirstChild("Le Petit Atelier")
-	local car = room and room:FindFirstChild("Berline client")
+	local bay = bays:FindFirstChild(tostring(player:GetAttribute("GarageDriverBay")))
+	local reference = bay and bay:FindFirstChild("Vehicle")
+	local car = reference and reference.Value
 	if not car then return end
 	local pose = car:GetPivot()
 	local camera = workspace.CurrentCamera
@@ -105,9 +107,11 @@ local function frame(dt)
 end
 
 local function update()
-	local ready = session:GetAttribute("ParkingReady") == true
+	local id = player:GetAttribute("GarageDriverBay")
+	local bay = id and bays:FindFirstChild(tostring(id))
+	local ready = bay and bay:GetAttribute("ParkingReady") == true
 	parkButton.BackgroundColor3 = if ready then Color3.fromRGB(64, 113, 78) else Color3.fromRGB(24, 49, 51)
-	local driving = session:GetAttribute("Driver") == player.UserId
+	local driving = id ~= nil
 	if driving == active then return end
 	active = driving
 	controls.Enabled = driving
@@ -136,6 +140,10 @@ local function update()
 	end
 end
 
-session:GetAttributeChangedSignal("Driver"):Connect(update)
-session:GetAttributeChangedSignal("ParkingReady"):Connect(update)
+player:GetAttributeChangedSignal("GarageDriverBay"):Connect(update)
+local function watchBay(bay)
+	bay:GetAttributeChangedSignal("ParkingReady"):Connect(update)
+end
+for _, bay in bays:GetChildren() do watchBay(bay) end
+bays.ChildAdded:Connect(watchBay)
 update()

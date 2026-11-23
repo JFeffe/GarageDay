@@ -7,6 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local modules = ReplicatedStorage:WaitForChild("GarageDay")
 local Repair = require(modules:WaitForChild("Repair"))
+local Service = require(modules:WaitForChild("Service"))
 local playerGui = player:WaitForChild("PlayerGui")
 player.CameraMode = Enum.CameraMode.LockFirstPerson
 StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
@@ -71,17 +72,17 @@ local function label(order, text, size, color, bold)
 	return item
 end
 
-label(1, "LE PETIT ATELIER", 12, gold, true)
+local mapName = label(1, "Garage Day", 12, gold, true)
 local ledger = label(2, "Atelier libre", 13, mint, false)
-local orderLine = label(3, "", 13, mint, false)
-local action = label(4, "Préparation du garage…", 19, cream, true)
-local hint = label(5, "", 13, cream, false)
-local held = label(7, "", 12, mint, false)
-local note = label(8, "", 12, gold, false)
-local saveNote = label(9, "", 12, gold, false)
+local orderLine = label(5, "", 13, mint, false)
+local action = label(6, "Préparation du garage…", 19, cream, true)
+local hint = label(7, "", 13, cream, false)
+local held = label(9, "", 12, mint, false)
+local note = label(10, "", 12, gold, false)
+local saveNote = label(11, "", 12, gold, false)
 
 local rail = Instance.new("Frame")
-rail.LayoutOrder = 6
+rail.LayoutOrder = 8
 rail.Size = UDim2.new(1, 0, 0, 3)
 rail.BackgroundColor3 = Color3.fromRGB(58, 82, 84)
 rail.BorderSizePixel = 0
@@ -91,6 +92,78 @@ progress.Size = UDim2.fromScale(0, 1)
 progress.BackgroundColor3 = gold
 progress.BorderSizePixel = 0
 progress.Parent = rail
+
+local ratingRow = Instance.new("Frame")
+ratingRow.LayoutOrder = 3
+ratingRow.Size = UDim2.new(1, 0, 0, 20)
+ratingRow.BackgroundTransparency = 1
+ratingRow.Parent = panel
+local function rowText(parent, size, color, text)
+	local item = Instance.new("TextLabel")
+	item.BackgroundTransparency = 1
+	item.Size = UDim2.fromScale(1, 1)
+	item.Font = Enum.Font.GothamMedium
+	item.TextSize = size
+	item.TextColor3 = color
+	item.TextXAlignment = Enum.TextXAlignment.Left
+	item.Text = text or ""
+	item.Parent = parent
+	return item
+end
+local stars = {}
+for i = 1, 5 do
+	local slot = Instance.new("Frame")
+	slot.BackgroundTransparency = 1
+	slot.Position = UDim2.fromOffset((i - 1) * 19, 0)
+	slot.Size = UDim2.fromOffset(19, 20)
+	slot.Parent = ratingRow
+	rowText(slot, 19, Color3.fromRGB(109, 131, 120), "★")
+	local fill = Instance.new("Frame")
+	fill.BackgroundTransparency = 1
+	fill.ClipsDescendants = true
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.Parent = slot
+	local star = rowText(fill, 19, gold, "★")
+	star.Size = UDim2.fromOffset(19, 20)
+	stars[i] = fill
+end
+local ratingText = rowText(ratingRow, 12, cream)
+ratingText.Position = UDim2.fromOffset(104, 0)
+ratingText.Size = UDim2.new(1, -104, 1, 0)
+
+local patients = Instance.new("Frame")
+patients.LayoutOrder = 4
+patients.Size = UDim2.fromScale(1, 0)
+patients.AutomaticSize = Enum.AutomaticSize.Y
+patients.BackgroundTransparency = 1
+patients.Parent = panel
+local patientLayout = Instance.new("UIListLayout")
+patientLayout.Padding = UDim.new(0, 4)
+patientLayout.SortOrder = Enum.SortOrder.LayoutOrder
+patientLayout.Parent = patients
+local patientRows = {}
+local warning = Color3.fromRGB(245, 141, 120)
+for i = 1, 2 do
+	local row = Instance.new("Frame")
+	row.LayoutOrder = i
+	row.Size = UDim2.new(1, 0, 0, 22)
+	row.BackgroundTransparency = 1
+	row.Visible = false
+	row.Parent = patients
+	local caption = rowText(row, 12, cream)
+	caption.Size = UDim2.new(1, 0, 0, 17)
+	local track = Instance.new("Frame")
+	track.Position = UDim2.fromOffset(0, 18)
+	track.Size = UDim2.new(1, 0, 0, 3)
+	track.BackgroundColor3 = rail.BackgroundColor3
+	track.BorderSizePixel = 0
+	track.Parent = row
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.BorderSizePixel = 0
+	fill.Parent = track
+	patientRows[i] = { row = row, caption = caption, fill = fill }
+end
 
 local reticleGui = Instance.new("ScreenGui")
 reticleGui.Name = "ViseurGarageDay"
@@ -114,6 +187,7 @@ edge.Parent = reticle
 
 local session = ReplicatedStorage:WaitForChild("GarageDaySession")
 local carryControl = session:WaitForChild("CarryControl")
+local bays = session:WaitForChild("Bays")
 local dropBound = false
 local motionHelp = {
 	raise = { "Le pont monte", "Tu peux préparer le matériel pendant la montée." },
@@ -127,20 +201,22 @@ local targetHelp = {
 	OilCap = "Vise le bouchon sur le moteur.", Drain = "Vise le dessous du moteur, depuis l’avant.",
 	WasteOil = "Vide le bac au fût marqué HUILE USÉE.",
 	Recycling = "Dépose la pièce au bac marqué RECYCLAGE.", Scrap = "Va au bac MÉTAUX, près de la porte piétonne.",
-	TireBin = "Amène la roue au bac PNEUS USÉS dehors, à droite de l’entrée.", Quote = "Retourne voir le client dans la salle d’attente.",
-	WheelStand = "Le support se trouve côté établi, à gauche du pont.", Bench = "L’établi se trouve à gauche du pont.",
+	TireBin = "Amène la roue au bac PNEUS USÉS sur le parvis.", Quote = "Retourne voir le client dans la salle d’attente.",
+	WheelStand = "Repère le support de roue près de l’établi.", Bench = "Repère l’établi dans l’atelier.",
 }
 local phases = {
 	free = {"Ouvrir le service", "Utilise le téléphone dans le bureau."},
 	arrival = {"Le client arrive", "Retrouve-le au comptoir d’accueil."},
 	reception = {"Accueillir le client", "Rends-toi au comptoir marqué ACCUEIL."},
-	intake = {"Rentrer la berline", "Prends le volant en A 01 et entre par le rideau ouvert."},
-	outbound = {"Sortir la berline", "Prends le volant et rejoins la place P 01 par la sortie."},
+	intake = {"Rentrer la berline", "Prends le volant et entre par le rideau ouvert."},
+	outbound = {"Sortir la berline", "Prends le volant et rejoins le stationnement de la baie."},
 	checkout = {"Le client rejoint la caisse", "Rends-toi au comptoir marqué CAISSE."},
 	payment = {"Encaisser la réparation", "Encaisse le client à la caisse."},
 	departing = {"Le client récupère sa voiture", "Laisse le passage libre pendant son départ."},
 	closing = {"Service terminé", "La caravane se gare sur le parvis."},
-	vendor = {"La caravane est ouverte", "Va au comptoir sur le parvis. Le téléphone ouvre la prochaine journée."},
+	vendor = {"Soirée à l’atelier", "Achète à la caravane sur le parvis ou réaménage le garage."},
+	service = {"Service ouvert", "Consulte les rendez-vous au comptoir."},
+	complete = {"Campagne terminée", "Les 10 journées sont terminées."},
 }
 
 local function bindDrop(canDrop)
@@ -159,35 +235,95 @@ local function bindDrop(canDrop)
 	end
 end
 
+local function focusedBay()
+	local driver = player:GetAttribute("GarageDriverBay")
+	if driver then return bays:FindFirstChild(tostring(driver)) end
+	if session:GetAttribute("Phase") ~= "service" then return nil end
+	local id = player:GetAttribute("GarageFocusBay")
+	local remembered = id and bays:FindFirstChild(tostring(id))
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local selected, fallback, distance = nil, nil, 13
+	for index = 1, #patientRows do
+		local bay = bays:FindFirstChild(tostring(index))
+		local phase = bay and bay:GetAttribute("Phase")
+		if phase and phase ~= "idle" then
+			fallback = fallback or bay
+			if root and bay:GetAttribute("Dock") then
+				local offset = (bay:GetAttribute("Dock") - root.Position).Magnitude
+				if offset < distance then selected, distance = bay, offset end
+			end
+		end
+	end
+	return selected or (remembered and remembered:GetAttribute("Phase") ~= "idle" and remembered) or fallback
+end
+
+local displayed
 local function refresh()
-	local phase = session:GetAttribute("Phase") or "free"
+	local servicePhase = session:GetAttribute("Phase") or "free"
+	local bay = focusedBay()
+	displayed = bay
+	local function value(key, default)
+		if bay then
+			local result = bay:GetAttribute(key)
+			if result ~= nil then return result end
+		end
+		return default
+	end
+	local phase = value("Phase", servicePhase)
+	local bayNumber = if bay then "0" .. bay.Name else ""
 	local day = session:GetAttribute("Day") or 0
 	local cash = session:GetAttribute("Cash") or 0
 	local served = session:GetAttribute("Served") or 0
 	local total = session:GetAttribute("Appointments") or 0
-	local customer = session:GetAttribute("Customer") or ""
-	local job = Repair.jobs[session:GetAttribute("Job") or ""]
-	local index = session:GetAttribute("Step") or 0
-	local steps = session:GetAttribute("Steps") or 0
-	local partOfDay = phase == "vendor" or phase == "closing"
-	local rider = session:GetAttribute("Driver") or 0
-	local driving = rider == player.UserId
+	local customer = value("Customer", "")
+	local job = Repair.jobs[value("Job", "")]
+	local index, steps = value("Step", 0), value("Steps", 0)
+	local evening = phase == "vendor" or phase == "closing"
+	local driving = player:GetAttribute("GarageDriverBay") ~= nil
 	local input = UserInputService.PreferredInput
-	local heldCargo
-	for item, spec in Repair.cargo do
-		if session:GetAttribute("Carry_" .. item) == player.UserId then heldCargo = spec.name break end
+	local hand = player:GetAttribute("GarageHeldKind")
+	local heldKey = player:GetAttribute("GarageHeldKey")
+	local object = heldKey and (Repair.cargo[heldKey] or Repair.tools[heldKey])
+	local arranging = hand == "furniture"
+	local modal = playerGui:GetAttribute("CaravaneOpen") or playerGui:GetAttribute("WorkshopOptionsOpen")
+	local alternate = if input == Enum.PreferredInput.Gamepad then "Y" elseif input == Enum.PreferredInput.Touch then "l’action de choix" else "F"
+
+	mapName.Text = string.upper(session:GetAttribute("MapName") or "Garage Day")
+	reticleGui.Enabled = not driving and not modal and input ~= Enum.PreferredInput.Touch
+	ledger.Text = if day == 0 then string.format("Campagne de %d jours · %d $", Service.lastDay, cash)
+		else string.format("Jour %d/%d · %d/%d clients · %d $", day, Service.lastDay, served, total, cash)
+	ratingRow.Visible = day > 0
+	local rating = session:GetAttribute("Rating") or 10
+	for i, star in stars do star.Size = UDim2.fromScale(math.clamp(rating / 2 - i + 1, 0, 1), 1) end
+	ratingText.Text = string.format("%.1f / 5 · Journée", rating / 2):gsub("%.", ",")
+	patients.Visible = servicePhase == "service"
+	for i, row in patientRows do
+		local station = bays:FindFirstChild(tostring(i))
+		local stage = station and station:GetAttribute("Phase")
+		row.row.Visible = stage ~= nil and stage ~= "idle" and stage ~= "arrival" and stage ~= "departing"
+		if row.row.Visible then
+			local fraction = (station:GetAttribute("Patience") or 0) / 100
+			local late = station:GetAttribute("CustomerLate")
+			local remaining = station:GetAttribute("PatienceSeconds") or 0
+			local time = if station:GetAttribute("SnackPause") then "Pause collation" elseif late then "Impatient"
+				else string.format("%d:%02d", math.floor(remaining / 60), remaining % 60)
+			row.caption.Text = string.format("%sBaie 0%d · %s · %s", if station == bay then "› " else "", i, station:GetAttribute("Customer") or "", time)
+			row.fill.Size = UDim2.fromScale(if late then 1 else fraction, 1)
+			row.fill.BackgroundColor3 = if late then warning elseif fraction < 0.3 then gold else mint
+		end
 	end
-	reticleGui.Enabled = not driving and not playerGui:GetAttribute("CaravaneOpen") and not playerGui:GetAttribute("WorkshopOptionsOpen")
-		and input ~= Enum.PreferredInput.Touch
-	ledger.Text = if day == 0 then "Atelier libre" else string.format("Jour %d · %d/%d clients · %d $", day, served, total, cash)
-	orderLine.Visible = phase ~= "free"
-	orderLine.Text = string.format("%s · %d $\n%s", customer, session:GetAttribute("OrderEstimate") or 0, session:GetAttribute("OrderJobs") or "")
-	action.TextColor3 = if partOfDay then mint else cream
-	local description = phases[phase] or phases.free
+
+	orderLine.Visible = bay ~= nil or evening or phase == "complete"
+	orderLine.Text = string.format("%s · %d $\n%s", customer, value("OrderEstimate", 0), value("OrderJobs", ""))
+	action.TextColor3 = if evening or phase == "complete" then mint else cream
+	local description = phases[phase] or phases.service
 	action.Text, hint.Text = description[1], description[2]
 	local saveStatus = session:GetAttribute("SaveState")
-	if phase == "free" and saveStatus == "loading" then
-		action.Text, hint.Text = "Chargement de l’atelier…", "Récupération de ta dernière journée."
+	if phase == "free" then
+		hint.Text = "Téléphone du bureau · " .. alternate .. " changer de carte."
+		if saveStatus == "loading" then
+			action.Text, hint.Text = "Chargement de l’atelier…", "Récupération de ta dernière journée."
+		end
 	end
 	saveNote.Visible = saveStatus == "unavailable" or saveStatus == "unsupported" or saveStatus == "conflict" or saveStatus == "retry"
 	saveNote.Text = if saveStatus == "retry" then "Sauvegarde en attente." elseif saveStatus == "conflict" then "Atelier sauvegardé dans une autre session."
@@ -195,71 +331,85 @@ local function refresh()
 	local drivingControls = if input == Enum.PreferredInput.Touch then "Commandes tactiles" elseif input == Enum.PreferredInput.Gamepad then
 		"Stick gauche conduire  ·  X valider  ·  B descendre" else "W/S accélérer et reculer  ·  A/D braquer  ·  E valider"
 	if driving then
-		action.Text = if phase == "intake" then "Baie 01" else "Stationnement P 01"
-		action.TextColor3 = if session:GetAttribute("ParkingReady") then mint else cream
-		hint.Text = session:GetAttribute("ParkingHint") or ""
-	elseif rider ~= 0 then
+		action.Text = (if phase == "intake" then "Baie " else "Stationnement P ") .. bayNumber
+		action.TextColor3 = if value("ParkingReady") then mint else cream
+		hint.Text = value("ParkingHint", "")
+	elseif value("Driver", 0) ~= 0 then
 		hint.Text = "Ton collègue est au volant. Laisse le passage libre."
 	elseif phase == "repair" and job then
-		action.Text = session:GetAttribute("ActionTitle") or job.name
-		local toolKey = session:GetAttribute("NeedsTool")
-		local cargoKey = session:GetAttribute("NeedsCargo")
-		local actionKey = session:GetAttribute("Action")
+		action.Text = value("ActionTitle", job.name)
+		local toolKey, cargoKey = value("NeedsTool"), value("NeedsCargo")
+		local actionKey = value("Action")
 		local cargo = cargoKey and Repair.cargo[cargoKey]
-		local owner = cargoKey and session:GetAttribute("Carry_" .. cargoKey)
+		local owner = value("CargoOwner")
 		local toolOwner = toolKey and session:GetAttribute("Tool_" .. toolKey)
-		local motion = motionHelp[session:GetAttribute("Motion") or ""]
-		if motion and session:GetAttribute("Moving") then
+		local motion = motionHelp[value("Motion", "")]
+		if motion and value("Moving") then
 			action.Text, hint.Text = motion[1], motion[2]
-		elseif heldCargo and (session:GetAttribute("NeedsEmptyHands") or (cargo and owner ~= player.UserId)) then
-			hint.Text = "Pose d’abord ce que tu transportes."
+		elseif hand and (value("NeedsEmptyHands") or (toolKey and toolOwner ~= player.UserId) or (cargo and owner ~= player.UserId)) then
+			hint.Text = "Pose d’abord ce que tu tiens."
 		elseif toolKey and toolOwner ~= player.UserId then
-			hint.Text = if toolOwner then "Ton collègue a l’outil." else "Prends « " .. Repair.tools[toolKey].name .. " » à droite du pont."
+			hint.Text = if toolOwner then "Ton collègue a l’outil." elseif value("ToolOnFloor") then "Utilise l’invite Ramasser sur l’outil déposé."
+				else "Prends « " .. Repair.tools[toolKey].name .. " » au poste d’outillage."
 		elseif cargo and owner ~= player.UserId then
-			local source = session:GetAttribute("CargoSource")
+			local source = value("CargoSource")
 			hint.Text = if owner then "Ton collègue transporte " .. cargo.name .. "."
 				elseif source == "Ground" then "Ramasse la pièce là où tu l’as posée."
+				elseif source == "Workpiece" then "Ramasse la pièce que tu viens de retirer."
 				elseif source == "Recovery" then "La pièce est au point OBJETS RÉCUPÉRÉS."
 				elseif source == "Counter1" or source == "Counter2" then "Reprends la pièce sur la desserte."
 				else cargo.hint
 		elseif actionKey == "adjustPressure" or actionKey == "verifyPressure" then
-			hint.Text = string.format("%d psi mesurés · cible 34 psi.", session:GetAttribute("Pressure") or 34)
+			hint.Text = string.format("%d psi mesurés · cible 34 psi.", value("Pressure", 34))
 		else
-			hint.Text = targetHelp[session:GetAttribute("Target") or ""] or "Approche-toi du point indiqué."
+			hint.Text = targetHelp[value("Target", "")] or "Approche-toi du point indiqué."
 		end
-	elseif partOfDay then
-		orderLine.Text = string.format("Recette du jour · %d $ · %.1f/5 ★", session:GetAttribute("DailyCash") or 0,
-			(session:GetAttribute("Rating") or 10) / 2)
+	elseif evening then
+		orderLine.Text = string.format("Recette du jour · %d $", session:GetAttribute("DailyCash") or 0)
+		if phase == "vendor" and day >= Service.lastDay then hint.Text = "Le téléphone affiche le bilan. La caravane est encore ouverte." end
+	elseif phase == "complete" then
+		orderLine.Text = string.format("%d $ encaissés en 10 jours", session:GetAttribute("TotalEarned") or 0)
+		hint.Text = string.format("Moyenne de la campagne · %.1f / 5 étoiles", session:GetAttribute("AverageRating") or 0):gsub("%.", ",")
 	elseif phase == "payment" then
-		action.Text = string.format("Encaisser %d $", session:GetAttribute("Invoice") or 0)
+		action.Text = string.format("Encaisser %d $", value("Invoice", 0))
 	elseif phase == "departing" then
-		orderLine.Text = string.format("%s · %d $ encaissés", customer, session:GetAttribute("LastInvoice") or 0)
-	end
-	local inHand = heldCargo
-	local carrying = heldCargo ~= nil
-	local cart = session:GetAttribute("CartOwner") == player.UserId
-	if not inHand then
-		for key, spec in Repair.tools do
-			if session:GetAttribute("Tool_" .. key) == player.UserId then inHand = spec.name break end
-		end
+		orderLine.Text = customer .. " a réglé sa facture."
+	elseif (phase == "intake" or phase == "outbound") and hand then
+		hint.Text = "Pose ce que tu tiens avant de prendre le volant."
 	end
 	local drop = if input == Enum.PreferredInput.Touch then "Poser" elseif input == Enum.PreferredInput.Gamepad then "B poser" else "Q poser"
-	held.Visible = driving or inHand ~= nil or cart
-	held.Text = if driving then drivingControls elseif inHand then "En main · " .. inHand .. (if carrying then "  ·  " .. drop else "")
+	held.Visible = driving or (hand ~= nil and not arranging)
+	held.Text = if driving then drivingControls elseif object then "En main · " .. object.name .. "  ·  " .. drop
 		else string.format("Chariot · %d/4 roues · %s", session:GetAttribute("CartStock") or 0, drop)
-	bindDrop(not driving and (carrying or cart))
-	local status = session:GetAttribute("StatusNote") or ""
-	note.Visible = (phase == "repair" and (status ~= "" or job ~= nil)) or session:GetAttribute("CustomerLate") and not partOfDay and phase ~= "departing"
-	note.Text = if session:GetAttribute("CustomerLate") then "Client impatient · " .. (if status ~= "" then status else "travail en cours")
-		elseif status ~= "" then status
-		elseif job then string.format("%s · %d/%d · geste %d/%d", job.name, session:GetAttribute("JobNumber") or 1,
-			session:GetAttribute("JobCount") or 1, index, steps)
+	bindDrop(not driving and hand ~= nil and not arranging)
+	local status = value("StatusNote", "")
+	note.Visible = phase == "repair" and job ~= nil
+	note.Text = if status ~= "" then status
+		elseif job then string.format("Baie %s · %s · %d/%d · geste %d/%d", bayNumber, job.name, value("JobNumber", 1),
+			value("JobCount", 1), index, steps)
 		else ""
 	local amount = if phase == "repair" and steps > 0 then (index - 1) / steps elseif total > 0 then served / total else 0
 	progress.Size = UDim2.fromScale(math.clamp(amount, 0, 1), 1)
+end
+
+local function watchBay(bay)
+	bay.AttributeChanged:Connect(refresh)
+	refresh()
+end
+for _, bay in bays:GetChildren() do watchBay(bay) end
+bays.ChildAdded:Connect(watchBay)
+bays.ChildRemoved:Connect(refresh)
+for _, attr in { "GarageDriverBay", "GarageFocusBay", "GarageHeldKind", "GarageHeldKey" } do
+	player:GetAttributeChangedSignal(attr):Connect(refresh)
 end
 session.AttributeChanged:Connect(refresh)
 playerGui:GetAttributeChangedSignal("CaravaneOpen"):Connect(refresh)
 playerGui:GetAttributeChangedSignal("WorkshopOptionsOpen"):Connect(refresh)
 UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(refresh)
+task.spawn(function()
+	while gui.Parent do
+		task.wait(0.22)
+		if focusedBay() ~= displayed then refresh() end
+	end
+end)
 refresh()

@@ -83,9 +83,15 @@ end
 local openLeft, openRight = makeHand(-1, false), makeHand(1, false)
 local gripLeft, gripRight = makeHand(-1, true), makeHand(1, true)
 local activeHold
-local actionUntil = 0
+local holdStart, actionUntil, kickUntil, kickStrength = 0, 0, 0, 0
+local feedback = session:WaitForChild("RepairFeedback")
+feedback.OnClientEvent:Connect(function(action)
+	kickStrength = if action == "loosen" or action == "tighten" then 0.33
+		elseif action == "mountWheel" or action == "removeWheel" or action == "drop" or action:find("^recycle") then 0.39 else 0.15
+	kickUntil = os.clock() + 0.24
+end)
 ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt, actor)
-	if actor == player and prompt:GetAttribute("Mechanical") then activeHold = prompt end
+	if actor == player and prompt:GetAttribute("Mechanical") then activeHold, holdStart = prompt, os.clock() end
 end)
 ProximityPromptService.PromptButtonHoldEnded:Connect(function(prompt, actor)
 	if actor == player and activeHold == prompt then activeHold = nil end
@@ -131,13 +137,13 @@ local function showEquipment(visual, count)
 	for _, piece in visual:GetChildren() do piece.LocalTransparencyModifier = 1 end
 end
 
-local gait, swing, reach = 0, 0, 0
+local gait, swing, reach, lag = 0, 0, 0, 0
 RunService:BindToRenderStep("GarageDayMains", Enum.RenderPriority.Camera.Value + 2, function(dt)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local driving = session:GetAttribute("Driver") == player.UserId
+	local driving = player:GetAttribute("GarageDriverBay") ~= nil
 	local enabled = humanoid ~= nil and humanoid.Health > 0 and not driving and not playerGui:GetAttribute("CaravaneOpen")
-		and not playerGui:GetAttribute("WorkshopOptionsOpen")
+		and not playerGui:GetAttribute("WorkshopOptionsOpen") and player:GetAttribute("GarageHeldKind") ~= "furniture"
 	screen.Enabled = enabled
 	if not enabled then showEquipment(nil, nil) return end
 
@@ -148,13 +154,24 @@ RunService:BindToRenderStep("GarageDayMains", Enum.RenderPriority.Camera.Value +
 	local speed = if root then (root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude else 0
 	local pushing = session:GetAttribute("CartOwner") == player.UserId
 	swing += (math.clamp(speed / 13, 0, 1) - swing) * math.min(dt * 8, 1)
-	reach += ((if activeHold or os.clock() < actionUntil then 1 else 0) - reach) * math.min(dt * 11, 1)
-	gait += dt * 9
+	local now = os.clock()
+	local heldFor = now - holdStart
+	local press = if activeHold then math.clamp(heldFor / math.max(activeHold.HoldDuration * 0.6, 0.10), 0.23, 1)
+		elseif now < actionUntil then 0.65 else 0
+	reach += (press - reach) * math.min(dt * (if large then 7 else 12), 1)
+	lag += (swing - lag) * math.min(dt * 4, 1)
+	local kickPhase = math.clamp((kickUntil - now) / 0.24, 0, 1)
+	local kick = kickStrength * kickPhase * math.sin(math.pi * (1 - kickPhase))
+	local work = activeHold and activeHold:GetAttribute("WorkAction")
+	local ratchet = work == "loosen" or work == "tighten"
+	local chatter = if ratchet then math.sin(heldFor * 108) * 0.053 * reach else 0
+	local pouring = work and (work == "fillOil" or work == "fillCoolant" or work == "recycle_usedOil")
+	gait += dt * (if large then 7.7 else 9)
 	local bounce = math.cos(gait * 2) * 0.048 * swing + math.sin(os.clock() * 2.5) * 0.017
 	local sway = math.sin(gait) * 0.093 * swing
 	local aspect = view.AbsoluteSize.X / math.max(1, view.AbsoluteSize.Y)
 	local gap = math.clamp(aspect / 1.53, 0.65, 1)
-	local raised = bounce + reach * 0.34
+	local raised = bounce + reach * 0.34 - kick * 0.32
 
 	local left = if large or pushing then gripLeft else openLeft
 	local right = if item or pushing then gripRight else openRight
@@ -165,7 +182,8 @@ RunService:BindToRenderStep("GarageDayMains", Enum.RenderPriority.Camera.Value +
 
 	if large then
 		local height = if wheel then -1.51 else -1.28
-		local base = CFrame.new(sway * 0.44, height + raised, -3.84 - reach * 0.29) * CFrame.Angles(0.20, -0.10, 0.03 * sway)
+		local base = CFrame.new(sway * 0.36, height + raised - 0.28 * lag, -3.84 - reach * 0.35 + kick * 0.9)
+			* CFrame.Angles(0.20 + (if pouring then reach * 0.46 else kick * 0.71), -0.10, 0.07 * sway)
 		local offset = if wheel then 0.77 else 0.59
 		left:PivotTo(base * CFrame.new(-offset * gap, -0.07, 0.10) * CFrame.Angles(0.24, -0.27, -0.35))
 		right:PivotTo(base * CFrame.new(offset * gap, -0.07, 0.10) * CFrame.Angles(0.24, 0.27, 0.35))
@@ -174,10 +192,10 @@ RunService:BindToRenderStep("GarageDayMains", Enum.RenderPriority.Camera.Value +
 	else
 		local width = if pushing then 0.70 else 1.03
 		local level = if pushing then -1.08 else -1.26
-		left:PivotTo(CFrame.new(-width * gap + sway, level + bounce + reach * 0.14, -3.26 - reach * 0.29)
+		left:PivotTo(CFrame.new((-width + reach * 0.22) * gap + sway, level + bounce + reach * 0.25, -3.26 - reach * 0.29)
 			* CFrame.Angles(0.32, 0.28, -0.28))
-		local grip = CFrame.new((if item then 0.77 else width) * gap + sway, level + raised, -3.33 - reach * 0.37)
-			* CFrame.Angles(0.26, -0.24, 0.24)
+		local grip = CFrame.new((if item then 0.77 else width) * gap + sway + chatter * 0.52, level + raised + chatter, -3.33 - reach * 0.42 + kick)
+			* CFrame.Angles(0.26 - kick + (if pouring then reach * 0.60 else 0), -0.24, 0.24 - reach * 0.12)
 		right:PivotTo(grip)
 		if item then
 			item:PivotTo(grip * CFrame.new(-0.035, 0.24, -0.13) * CFrame.Angles(0.30, if gearKey == "impact" then -0.53 else 0.15, -0.25))

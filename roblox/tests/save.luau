@@ -32,6 +32,16 @@ end
 
 local state = newService()
 assert(restore(state).phase == "free")
+assert(Service.selectMap(state, "Tandem"))
+state.furniture.Tandem = { phone = { x = 1.75, z = 3.25, turn = 1 } }
+local moved = restore(state)
+assert(moved.map == "Tandem" and moved.furniture.Tandem.phone.turn == 1 and moved.day == 0)
+assert(Service.selectMap(moved, "PetitAtelier") and Service.selectMap(moved, "Tandem"))
+assert(moved.furniture.Tandem.phone.x == 1.75)
+local legacy = Service.snapshot(newService())
+assert(Service.restore(moved, { version = 1, orders = legacy.orders, day = 0, cash = 0, totalEarned = 0, spent = 0,
+	dailyCash = 0, lastInvoice = 0, rating = 10 }))
+assert(moved.map == "PetitAtelier" and next(moved.furniture) == nil)
 assert(Service.open(state))
 local first = assert(Service.current(state))
 	local snapshot = Service.snapshot(state)
