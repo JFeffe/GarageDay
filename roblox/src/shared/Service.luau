@@ -1,8 +1,8 @@
 --!strict
 
 export type Phase = "free" | "arrival" | "reception" | "intake" | "repair" | "outbound" | "checkout" | "payment" | "departing" | "done"
-export type Job = "brakes" | "pressure"
-type Order = { name: string, job: Job, amount: number }
+export type Job = "brakes" | "pressure" | "oil" | "battery"
+type Order = { read name: string, read job: Job, read amount: number, read vehicle: "Sedan" | "Sport" }
 export type State = {
 	phase: Phase,
 	day: number,
@@ -14,10 +14,19 @@ export type State = {
 }
 
 local Service = {}
-Service.orders = table.freeze({
-	{ name = "Camille", job = "brakes", amount = 48 },
-	{ name = "Noah", job = "pressure", amount = 25 },
-} :: { Order })
+local camille = table.freeze({ name = "Camille", job = "brakes", amount = 48, vehicle = "Sedan" } :: Order)
+local noah = table.freeze({ name = "Noah", job = "pressure", amount = 25, vehicle = "Sport" } :: Order)
+local lea = table.freeze({ name = "Léa", job = "oil", amount = 35, vehicle = "Sedan" } :: Order)
+local alex = table.freeze({ name = "Alex", job = "battery", amount = 45, vehicle = "Sport" } :: Order)
+local plans: { { Order } } = {
+	table.freeze({ camille, noah, lea }),
+	table.freeze({ alex, noah }),
+	table.freeze({ lea, camille, alex }),
+}
+
+function Service.plan(day: number): { Order }
+	return plans[(math.max(day, 1) - 1) % #plans + 1]
+end
 
 function Service.new(): State
 	return { phase = "free", day = 0, ticket = 1, cash = 0, served = 0, dailyCash = 0, driver = 0 }
@@ -70,7 +79,7 @@ end
 
 function Service.pay(state: State): boolean
 	if state.phase ~= "payment" then return false end
-	local amount = Service.orders[state.ticket].amount
+	local amount = Service.plan(state.day)[state.ticket].amount
 	state.cash += amount
 	state.dailyCash += amount
 	state.served += 1
@@ -80,7 +89,7 @@ end
 
 function Service.departed(state: State)
 	if state.phase ~= "departing" then return end
-	if state.ticket < #Service.orders then
+	if state.ticket < #Service.plan(state.day) then
 		state.ticket += 1
 		state.phase = "arrival"
 	else

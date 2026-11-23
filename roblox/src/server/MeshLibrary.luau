@@ -43,6 +43,9 @@ local function build(asset)
 	part.Name = asset.Name
 	part.CFrame = CFrame.new(Vector3.new(table.unpack(info.center)))
 	part.Size = Vector3.new(table.unpack(info.size))
+	if info.pivot then
+		part.PivotOffset = CFrame.new(Vector3.new(table.unpack(info.pivot)) - part.Position)
+	end
 	part.Color = Color3.new(1, 1, 1)
 	part.Material = Enum.Material.SmoothPlastic
 	part.Anchored = true

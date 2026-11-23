@@ -11,10 +11,10 @@ local playerGui = player:WaitForChild("PlayerGui")
 player.CameraMode = Enum.CameraMode.LockFirstPerson
 StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
 
-local cream = Color3.fromRGB(255, 239, 210)
-local mint = Color3.fromRGB(161, 212, 197)
-local gold = Color3.fromRGB(249, 200, 113)
-local ink = Color3.fromRGB(19, 37, 40)
+local cream = Color3.fromRGB(255, 241, 214)
+local mint = Color3.fromRGB(172, 218, 194)
+local gold = Color3.fromRGB(240, 189, 110)
+local ink = Color3.fromRGB(21, 38, 40)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "GarageDay"
@@ -28,7 +28,7 @@ panel.Position = UDim2.new(1, -14, 0, 10)
 panel.Size = UDim2.fromScale(0.46, 0)
 panel.AutomaticSize = Enum.AutomaticSize.Y
 panel.BackgroundColor3 = ink
-panel.BackgroundTransparency = 0.08
+panel.BackgroundTransparency = 0.035
 panel.Parent = gui
 
 local bounds = Instance.new("UISizeConstraint")
@@ -40,8 +40,8 @@ local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 10)
 corner.Parent = panel
 local outline = Instance.new("UIStroke")
-outline.Color = Color3.fromRGB(75, 114, 113)
-outline.Transparency = 0.4
+outline.Color = Color3.fromRGB(124, 150, 134)
+outline.Transparency = 0.42
 outline.Parent = panel
 local pad = Instance.new("UIPadding")
 pad.PaddingTop = UDim.new(0, 11)
@@ -70,7 +70,7 @@ local function label(order, text, size, color, bold)
 	return item
 end
 
-label(1, "LE PETIT ATELIER", 12, mint, true)
+label(1, "LE PETIT ATELIER", 12, gold, true)
 local ledger = label(2, "Atelier libre", 13, mint, false)
 local orderLine = label(3, "", 13, mint, false)
 local action = label(4, "Préparation du garage…", 19, cream, true)
@@ -109,6 +109,17 @@ edge.Color = ink
 edge.Parent = reticle
 
 local session = ReplicatedStorage:WaitForChild("GarageDaySession")
+local motionHelp = {
+	raise = { "Le pont monte", "Tu peux préparer le matériel pendant la montée." },
+	lower = { "Le pont descend", "Attends l’arrêt du pont." },
+	openHood = { "Le capot s’ouvre", "Laisse l’avant du véhicule dégagé." },
+	closeHood = { "Le capot se referme", "Attends la fermeture." },
+}
+local targetHelp = {
+	Lever = "Vise le levier jaune.", Hood = "Place-toi devant le véhicule.", BatteryTray = "Vise le plateau de batterie sous le capot.",
+	OilCap = "Vise le bouchon jaune sur le moteur.", WasteOil = "Approche-toi du récupérateur à côté des établis.",
+	Recycling = "Dépose la pièce au bac marqué RECYCLAGE.",
+}
 local phases = {
 	free = {"Ouvrir le service", "Utilise le téléphone dans le bureau."},
 	arrival = {"Le client arrive", "Retrouve-le au comptoir d’accueil."},
@@ -126,21 +137,20 @@ local function refresh()
 	local day = session:GetAttribute("Day") or 0
 	local cash = session:GetAttribute("Cash") or 0
 	local served = session:GetAttribute("Served") or 0
-	local ticket = Service.orders[session:GetAttribute("Ticket") or 1]
+	local plan = Service.plan(day)
+	local ticket = plan[math.clamp(session:GetAttribute("Ticket") or 1, 1, #plan)]
 	local job = Repair.jobs[session:GetAttribute("Job") or ticket.job]
 	local index = session:GetAttribute("Step") or 1
 	local step = job.steps[index]
 	local toolOwner = session:GetAttribute("ToolOwner") or 0
-	local padsOwner = session:GetAttribute("PadsOwner") or 0
 	local ownTool = toolOwner == player.UserId
-	local ownPads = padsOwner == player.UserId
 	local rider = session:GetAttribute("Driver") or 0
 	local driving = rider == player.UserId
 	local input = UserInputService.PreferredInput
 	reticleGui.Enabled = not driving and input ~= Enum.PreferredInput.Touch
-	ledger.Text = if day == 0 then "Atelier libre" else `Jour {day}  ·  {served}/{#Service.orders} clients  ·  {cash} $`
+	ledger.Text = if day == 0 then "Atelier libre" else `Jour {day}  ·  {served}/{#plan} clients  ·  {cash} $`
 	orderLine.Visible = phase ~= "free" and phase ~= "done"
-	orderLine.Text = ticket.name .. " · " .. job.name
+	orderLine.Text = `{ticket.name} · {job.name} · {ticket.amount} $`
 	action.TextColor3 = if phase == "done" then mint else cream
 	local description = phases[phase] or phases.free
 	action.Text, hint.Text = description[1], description[2]
@@ -154,25 +164,35 @@ local function refresh()
 		hint.Text = "Ton collègue est au volant. Laisse le passage libre."
 	elseif phase == "repair" and step then
 		action.Text = step.title
-		if session:GetAttribute("LiftMoving") then
-			action.Text = if step.action == "raise" then "Le pont monte" else "Le pont descend"
-			hint.Text = if step.action == "raise" then "Prépare les outils pendant la montée." else "Attends l’arrêt du pont."
-		elseif step.item == "tool" and not ownTool then
+		local cargo = step.cargo and Repair.cargo[step.cargo]
+		local owner = step.cargo and session:GetAttribute("Carry_" .. step.cargo)
+		local motion = step.motion and motionHelp[step.motion]
+		if motion and session:GetAttribute("Moving") then
+			action.Text, hint.Text = motion[1], motion[2]
+		elseif step.tool and not ownTool then
 			hint.Text = if toolOwner ~= 0 then "Ton collègue a l’outil." else `Prends l’outil « {job.tool} » sur le meuble à droite du pont.`
-		elseif step.item == "pads" and not ownPads then
-			hint.Text = if padsOwner ~= 0 then "Ton collègue a les plaquettes." else "Prends les plaquettes à l’étagère des pièces châssis."
+		elseif cargo and owner ~= player.UserId then
+			hint.Text = if owner then `Ton collègue transporte cet objet · {cargo.name}.` else cargo.hint
+		elseif step.action == "inflate" then
+			hint.Text = `{session:GetAttribute("Pressure") or 28} psi mesurés · cible 34 psi.`
+		elseif step.action == "verifyPressure" then
+			hint.Text = `Lecture actuelle {session:GetAttribute("Pressure") or 34} psi. Confirme la mesure.`
 		else
-			hint.Text = if step.target == "Lever" then "Vise le levier jaune." else "Approche-toi de la roue indiquée."
+			hint.Text = step.hint or targetHelp[step.target] or "Approche-toi du point indiqué."
 		end
 	elseif phase == "done" then
 		orderLine.Visible = true
 		orderLine.Text = `Recette du jour · {session:GetAttribute("DailyCash") or 0} $`
 	end
 	local items = {}
-	if ownTool then table.insert(items, job.tool) end
-	if ownPads then table.insert(items, "Plaquettes") end
-	held.Text = if driving then drivingControls elseif #items > 0 then "En main · " .. table.concat(items, " + ") else "Mains libres"
-	local amount = if phase == "repair" then (index - 1) / #job.steps else served / #Service.orders
+	if ownTool and job.tool then table.insert(items, job.tool) end
+	for item, spec in Repair.cargo do
+		if session:GetAttribute("Carry_" .. item) == player.UserId then table.insert(items, spec.name) end
+	end
+	table.sort(items)
+	held.Visible = driving or #items > 0
+	held.Text = if driving then drivingControls else "En main · " .. table.concat(items, " + ")
+	local amount = if phase == "repair" then (index - 1) / #job.steps else served / #plan
 	progress.Size = UDim2.fromScale(math.clamp(amount, 0, 1), 1)
 end
 session.AttributeChanged:Connect(refresh)

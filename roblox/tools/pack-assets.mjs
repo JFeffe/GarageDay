@@ -105,10 +105,15 @@ function sourceGroups(name, groupFor, turnAround) {
   function visit(index, parents) {
     const node = glb.spec.nodes[index];
     const chain = [node, ...parents];
-    if (node.mesh != null) {
-      const groupName = groupFor(node.name);
+    const groupName = node.mesh == null ? null : groupFor(node.name);
+    if (groupName != null) {
       if (!groups.has(groupName)) groups.set(groupName, { vertices: [], faces: [] });
       const group = groups.get(groupName);
+      const inModelSpace = vertex => {
+        const [x, y, z] = chain.reduce(transform, vertex);
+        return turnAround ? [-x, y, -z] : [x, y, z];
+      };
+      if (node.name === 'HoodPivot') group.pivot = inModelSpace([0, 0, 0]);
       for (const primitive of glb.spec.meshes[node.mesh].primitives) {
         if ((primitive.mode ?? 4) !== 4) throw new Error(`Unsupported topology in ${name}`);
         const vertices = readAccessor(glb, primitive.attributes.POSITION, 3);
@@ -117,10 +122,7 @@ function sourceGroups(name, groupFor, turnAround) {
         const texcoords = primitive.attributes.TEXCOORD_0;
         const uvs = texcoords == null ? null : readAccessor(glb, texcoords, 2);
         const start = group.vertices.length;
-        for (const vertex of vertices) {
-          const point = chain.reduce(transform, vertex);
-          group.vertices.push(turnAround ? [-point[0], point[1], -point[2]] : point);
-        }
+        for (const vertex of vertices) group.vertices.push(inModelSpace(vertex));
         for (let i = 0; i < indices.length; i += 3) {
           const face = indices.slice(i, i + 3);
           const uv = uvs && [0, 1].map(axis => face.reduce((sum, j) => sum + uvs[j][axis], 0) / 3);
@@ -146,7 +148,7 @@ function bounds(vertices) {
   return { min, max, center: min.map((value, i) => (value + max[i]) / 2), size: min.map((value, i) => max[i] - value) };
 }
 
-function writeGroup(name, vertices, faces) {
+function writeGroup(name, vertices, faces, pivot) {
   if (vertices.length > 60000 || faces.length > 20000) throw new Error(`${name} exceeds the EditableMesh budget`);
   const { center, size } = bounds(vertices);
   const data = Buffer.alloc(4 + 6 * vertices.length + 9 * faces.length);
@@ -177,8 +179,9 @@ function writeGroup(name, vertices, faces) {
     if (previous && Number(previous[1]) > count) fs.unlinkSync(path.join(directory, entry));
   }
   const vector = value => `{${value.map(n => n.toFixed(5)).join(', ')}}`;
+  const hinge = pivot ? `, pivot = ${vector(pivot)}` : '';
   fs.writeFileSync(path.join(directory, 'init.luau'),
-    `return { center = ${vector(center)}, size = ${vector(size)}, chunks = ${count} }\n`);
+    `return { center = ${vector(center)}, size = ${vector(size)}, chunks = ${count}${hinge} }\n`);
   Array.from({ length: count }, (_, i) => {
     fs.writeFileSync(path.join(directory, `Chunk${i + 1}.luau`),
       `return "${encoded.slice(i * chunkLength, (i + 1) * chunkLength)}"\n`);
@@ -186,18 +189,28 @@ function writeGroup(name, vertices, faces) {
   console.log(`${name} · ${vertices.length} sommets · ${faces.length} triangles · ${vector(center)}`);
 }
 
-function pack(name, dimensions, groupFor, turnAround = false) {
+function pack(name, dimensions, groupFor, turnAround = false, referenceFrame) {
   const groups = sourceGroups(name, groupFor, turnAround);
-  const assembly = bounds([...groups.values()].flatMap(group => group.vertices));
-  const origin = [assembly.center[0], assembly.min[1], assembly.center[2]];
-  const scale = dimensions.map((size, axis) => size / assembly.size[axis]);
-  for (const [groupName, group] of groups) {
-    const fit = group.vertices.map(v => v.map((coordinate, i) => (coordinate - origin[i]) * scale[i]));
-    writeGroup(groupName, fit, group.faces);
+  let frame = referenceFrame;
+  if (!frame) {
+    const assembly = bounds([...groups.values()].flatMap(group => group.vertices));
+    frame = {
+      origin: [assembly.center[0], assembly.min[1], assembly.center[2]],
+      scale: dimensions.map((size, axis) => size / assembly.size[axis]),
+    };
   }
+  const fit = vertex => vertex.map((coordinate, axis) => (coordinate - frame.origin[axis]) * frame.scale[axis]);
+  for (const [groupName, group] of groups) {
+    writeGroup(groupName, group.vertices.map(fit), group.faces, group.pivot && fit(group.pivot));
+  }
+  return frame;
 }
 
-pack('garage_quartier/sedan', [6.3, 4.6, 13.8], name => wheelNames[name] ?? 'Sedan', true);
+const sedanFrame = pack('garage_quartier/sedan', [6.3, 4.6, 13.8],
+  name => wheelNames[name] ?? (name === 'HoodPivot' ? 'SedanHood' : 'Sedan'), true);
+// These two GLBs share the same wheel and door positions.
+pack('garage_quartier/sedan-sports', null,
+  name => wheelNames[name] ? null : (name === 'HoodPivot' ? 'SportHood' : 'Sport'), true, sedanFrame);
 pack('garage_quartier/car-lift', [10.5, 9.15, 7.4], name => name.includes('carriage') ? 'LiftCarriage' : 'LiftBase');
 for (const [name, model, size] of [
   ['garage_quartier/impact-wrench', 'Wrench', [0.85, 1.48, 1.42]],
@@ -210,6 +223,14 @@ for (const [name, model, size] of [
   ['garage_quartier/roller-door', 'Roller', [9.35, 8.15, 0.43]],
   ['garage_quartier/oil-drum', 'Drum', [1.84, 2.36, 1.84]],
   ['garage_quartier/shop-bin', 'Bin', [1.85, 1.94, 1.85]],
+  ['garage_quartier/battery', 'Battery', [0.96, 0.58, 0.68]],
+  ['garage_quartier/engine', 'Engine', [2.4, 0.53, 1.76]],
+  ['garage_quartier/brake-disc', 'BrakeDisc', [1.53, 1.53, 0.27]],
+  ['garage_quartier/oil-crate', 'OilCrate', [1.95, 0.73, 0.86]],
+  ['garage_quartier/cone', 'Cone', [0.83, 1.22, 0.83]],
+  ['garage_quartier/compressor', 'Compressor', [2.3, 1.61, 1.12]],
+  ['garage_quartier/fire-extinguisher', 'Extinguisher', [0.5, 1.43, 0.58]],
+  ['garage_quartier/shop-light', 'ShopLight', [4.3, 0.27, 0.61]],
   ['kenney/desk', 'Desk', [5.6, 2.62, 2.55]],
   ['kenney/chairCushion', 'Chair', [2.05, 2.68, 2.08]],
   ['kenney/bookcaseClosedDoors', 'Bookcase', [2.3, 3.4, 1.4]],
