@@ -5,6 +5,8 @@ local TweenService = game:GetService("TweenService")
 local Layout = require(script.Parent.PetitAtelier)
 local MeshLibrary = require(script.Parent.MeshLibrary)
 local Decor = require(script.Parent.AtelierDecor)
+local Gear = require(script.Parent.GearWorld)
+local GarageProps = require(script.Parent.GarageProps)
 local Repair = require(ReplicatedStorage.GarageDay.Repair)
 
 local World = {}
@@ -227,7 +229,6 @@ local function buildStations(world)
 		{ "reception", "Reception", "Accueil et caisse", Vector3.new(5.75, 3.55, 2.5), trim, math.pi },
 		{ "plant", "Plant", "Plante", Vector3.new(1.52, 2.1, 1.52), mint },
 		{ "bench", "Workbench", "Établi", Vector3.new(2.86, 3.05, 2.62), teal },
-		{ "cart", "Trolley", "Chariot", Vector3.new(2.76, 2.55, 2.45), steel },
 		{ "partsChassis", "Shelf", "Pièces châssis", Vector3.new(2.62, 3.45, 2.52), teal },
 		{ "partsElectric", "Shelf", "Pièces électriques", Vector3.new(2.62, 3.45, 2.52), teal },
 		{ "wasteOil", "Drum", "Récupération d’huile", Vector3.new(1.84, 2.36, 1.84), steel },
@@ -244,41 +245,17 @@ local function buildStations(world)
 	part(room, "Combiné", Vector3.new(0.96, 0.15, 0.28), phone + Vector3.new(0, 0.20, -0.16), teal)
 	part(room, "Terminal", Vector3.new(0.97, 0.46, 0.86), at(1.5, 9.48, 3.52), steel)
 	part(room, "Voyant de caisse", Vector3.new(0.8, 0.06, 0.19), at(1.5, 9.60, 3.79), mint)
-	local wrenchPos = station("toolWrench") + Vector3.new(0, 2.43, 0)
-	local gaugePos = station("toolPressure") + Vector3.new(0, 2.64, 0)
-	world.tools.brakes = cloneMesh(world.meshes.Wrench, room, CFrame.new(wrenchPos) * CFrame.Angles(0, math.rad(24), 0))
-		or part(room, "Clé à choc", Vector3.new(0.62, 1.35, 1.29), wrenchPos + Vector3.yAxis * 0.69, steel)
-	world.tools.pressure = part(room, "Manomètre", Vector3.new(0.77, 0.53, 0.94), gaugePos, yellow)
-	local face = part(room, "Cadran", Vector3.new(0.55, 0.04, 0.68), gaugePos + Vector3.yAxis * 0.29, steel)
-	world.gaugeFace = face
-	local panPos = station("toolOil") + Vector3.yAxis * 2.48
-	local oilPos = station("counter") + Vector3.new(-0.20, 2.61, -0.05)
-	local batteryPos = station("partsElectric") + Vector3.new(0, 2.64, -0.44)
-	local usedPan = Vector3.new(0, 0.26, -7.33)
 	local waste = station("wasteOil")
 	local recycling = at(16.5, 10.53)
-	world.cargo.pads = part(room, "Plaquettes", Vector3.new(1.06, 0.33, 0.7), at(6.5, 10.28, 2.68), yellow, false, Enum.Material.Metal)
-	world.cargo.pan = part(room, "Bac de vidange", Vector3.new(1.65, 0.28, 1.2), panPos, steel)
-	world.cargo.usedOil = part(room, "Bac d’huile usée", Vector3.new(1.65, 0.48, 1.2), usedPan, Color3.fromRGB(65, 45, 34))
-	world.cargo.freshOil = part(room, "Bidon d’huile", Vector3.new(0.55, 0.85, 0.37), oilPos + Vector3.new(-0.78, 0.34, 0), yellow)
-	world.cargo.newBattery = cloneMesh(world.meshes.Battery, room, CFrame.new(batteryPos))
-		or part(room, "Batterie neuve", Vector3.new(0.96, 0.58, 0.68), batteryPos + Vector3.yAxis * 0.29, steel)
-	cloneMesh(world.meshes.OilCrate, room, CFrame.new(oilPos + Vector3.new(0.47, -0.05, 0)))
-	cloneMesh(world.meshes.Compressor, room, CFrame.new(at(16.73, 0.72)) * CFrame.Angles(0, math.pi / 2, 0))
+	world.compressor = cloneMesh(world.meshes.Compressor, room, CFrame.new(at(16.73, 0.72)) * CFrame.Angles(0, math.pi / 2, 0))
 	cloneMesh(world.meshes.Extinguisher, room, CFrame.new(at(17.54, 11.67, 0.75)))
 	prop(world, "Bin", "Bac de recyclage", recycling, Vector3.new(1.85, 1.94, 1.85), teal)
 	for _, entry in {
 		{ "Phone", "TÉLÉPHONE", phone + Vector3.yAxis * 0.34 },
 		{ "Reception", "ACCUEIL", at(2.53, 9.14, 3.62) }, { "Checkout", "CAISSE", at(1.47, 9.14, 3.75) },
-		{ "Toolbrakes", "CLÉ À CHOC", wrenchPos + Vector3.new(-0.53, 0.82, 0) },
-		{ "Toolpressure", "PRESSION", gaugePos + Vector3.new(-0.53, 0.24, 0) },
-		{ "Pads", "CHÂSSIS", at(6.52, 10.05, 2.93) },
-		{ "BatteryStock", "ÉLECTRICITÉ", station("partsElectric") + Vector3.new(0, 3.49, -1.31) },
-		{ "OilPan", "VIDANGE", panPos + Vector3.new(-0.80, 0.44, 0) },
-		{ "OilStock", "HUILE NEUVE", oilPos + Vector3.new(-0.83, 0.84, 0) },
+		{ "Quote", nil, at(2.97, 5.72, 3.55) },
 		{ "WasteOil", "HUILE USÉE", waste + Vector3.new(-0.94, 2.17, 0) },
 		{ "Recycling", "RECYCLAGE", recycling + Vector3.new(-0.97, 1.8, 0) },
-		{ "UsedPan", nil, usedPan + Vector3.new(0, 0.22, -0.34) },
 	} do
 		local anchor = target(room, entry[1], entry[3])
 		world.targets[entry[1]] = anchor
@@ -364,13 +341,51 @@ local function buildVehicle(world)
 	world.battery = cloneMesh(meshes.Battery, world.engineBay, CFrame.new(batteryBase))
 		or part(world.engineBay, "Batterie", Vector3.new(0.96, 0.58, 0.68), batteryBase + Vector3.yAxis * 0.29, steel)
 	part(world.engineBay, "Bouchon d’huile", Vector3.new(0.31, 0.13, 0.32), Vector3.new(-0.45, 2.71, -5.20), yellow)
-	world.cargo.oldBattery = cloneMesh(meshes.Battery, vehicle, CFrame.new(1.21, 2.61, -5.64))
-		or part(vehicle, "Batterie à recycler", Vector3.new(0.96, 0.58, 0.68), Vector3.new(1.21, 2.90, -5.64), steel)
-	world.cargo.emptyBottle = part(vehicle, "Bidon vide", Vector3.new(0.51, 0.74, 0.33), Vector3.new(-1.28, 3.0, -5.54), trim)
-	world.targets.Hood = target(vehicle, "Capot", Vector3.new(-0.12, 2.96, -6.46))
-	world.targets.BatteryTray = target(vehicle, "Plateau de batterie", Vector3.new(1.25, 3.38, -5.18))
-	world.targets.OilCap = target(vehicle, "Bouchon d’huile", Vector3.new(-0.45, 3.41, -5.30))
-	world.targets.Drain = target(vehicle, "Bouchon de vidange", Vector3.new(0, 0.28, -6.3))
+	for name, position in {
+		Hood = Vector3.new(-0.12, 2.96, -6.46), BatteryTray = Vector3.new(1.25, 3.38, -5.18),
+		OilCap = Vector3.new(-0.45, 3.41, -5.30), Drain = Vector3.new(0, 0.28, -6.3),
+		DiagnosticPort = Vector3.new(-1.08, 3.57, -5.68), Radiator = Vector3.new(0.77, 3.55, -5.97),
+		Belt = Vector3.new(-0.97, 3.52, -5.30), Wipers = Vector3.new(-1.60, 3.65, -3.12),
+		Window = Vector3.new(3.36, 3.42, 0.10), FrontLamp = Vector3.new(2.0, 2.22, -6.67),
+		RearLamp = Vector3.new(2.0, 2.17, 6.69), Exhaust = Vector3.new(0.95, 0.46, 6.49),
+		DamperLeft = Vector3.new(-3.11, 1.47, 2.90), DamperRight = Vector3.new(3.11, 1.47, 2.90),
+		Door = Vector3.new(-3.52, 3.02, 0.45),
+	} do
+		world.targets[name] = target(vehicle, name, position)
+	end
+	local components = {
+		Battery = { world.battery },
+		Belt = { cylinder(world.engineBay, "Courroie", 0.12, 0.72, Vector3.new(-1.62, 2.43, -4.68), black) },
+		Muffler = { cloneMesh(meshes.Muffler, vehicle, CFrame.new(0.94, 0.46, 5.88))
+			or part(vehicle, "Silencieux", Vector3.new(2.91, 0.34, 0.93), Vector3.new(0.94, 0.46, 5.88), steel) },
+		Shield = { part(vehicle, "Cache moteur", Vector3.new(3.22, 0.11, 2.18), Vector3.new(0, 0.42, -4.94), black) },
+		Wipers = {},
+	}
+	part(world.engineBay, "Radiateur", Vector3.new(3.15, 0.71, 0.17), Vector3.new(0, 2.33, -5.76), steel, false, Enum.Material.Metal)
+	part(world.engineBay, "Bouchon du radiateur", Vector3.new(0.27, 0.13, 0.26), Vector3.new(0.77, 2.74, -5.76), mint)
+	world.wiperHomes = {}
+	for _, x in { -1.34, 0.65 } do
+		local blade = part(vehicle, "Balai d’essuie-glace", Vector3.new(1.07, 0.065, 0.074), Vector3.new(x, 3.10, -3.43), black)
+		blade.CFrame *= CFrame.Angles(0, math.rad(19), math.rad(14))
+		table.insert(components.Wipers, blade)
+		world.wiperHomes[blade] = blade.CFrame
+	end
+	world.windowPane = part(vehicle, "Vitre passager", Vector3.new(0.033, 0.70, 1.70), Vector3.new(2.39, 3.06, -0.60),
+		Color3.fromRGB(131, 176, 179), false, Enum.Material.Glass)
+	world.windowPane.Transparency = 1
+	world.windowHome = world.windowPane.CFrame
+	for _, side in { -1, 1 } do
+		local position = Vector3.new(side * 2.08, 0.64, 3.16)
+		components[if side < 0 then "DamperLeft" else "DamperRight"] = {
+			cloneMesh(meshes.Damper, vehicle, CFrame.new(position))
+				or part(vehicle, "Amortisseur", Vector3.new(0.24, 1.10, 0.25), position, red),
+		}
+	end
+	world.components = components
+	world.originalColors = {}
+	for _, pieces in components do
+		for _, piece in pieces do world.originalColors[piece] = piece.Color end
+	end
 	local hull = part(vehicle, "Volume de la berline", Vector3.new(4.7, 2.72, 12.34), Vector3.new(0, 1.88, 0), red, true)
 	hull.Transparency = 1
 	for _, name in names do
@@ -381,27 +396,25 @@ local function buildVehicle(world)
 			or cylinder(vehicle, "Pneu", 0.98, 2.12, Vector3.new(side * 2.31, 1.23, if front then -3.70 else 3.43), black)
 		local hub = tire.Position
 		world.targets[name] = target(vehicle, name, hub + Vector3.xAxis * side * (tire.Size.X / 2 + 0.21))
-		if front then
-			local discCentre = hub + Vector3.xAxis * side * 0.25
-			local originalDisc = cloneMesh(meshes.BrakeDisc, vehicle,
-				CFrame.new(discCentre - Vector3.yAxis * 0.765) * CFrame.Angles(0, side * math.pi / 2, 0))
-			local disc = originalDisc or cylinder(vehicle, "Disque", 0.25, 1.53, discCentre, trim)
-			disc.Material = Enum.Material.Metal
-			local caliper = part(vehicle, if originalDisc then "Plaquette neuve" else "Étrier",
-				if originalDisc then Vector3.new(0.15, 0.18, 0.31) else Vector3.new(0.3, 0.68, 0.53),
-				hub + Vector3.new(side * 0.39, 0.56, 0.12), teal)
-			disc.Transparency = 1
-			caliper.Transparency = 1
-			world.wheels[name] = { tire = tire, home = tire.CFrame, disc = disc, caliper = caliper, originalDisc = originalDisc ~= nil,
-				removed = CFrame.new(side * 6.28, tire.Size.X / 2 + 0.06, -4.85) * CFrame.Angles(0, 0, math.pi / 2) }
-		end
+		local discCentre = hub + Vector3.xAxis * side * 0.25
+		local disc = cloneMesh(meshes.BrakeDisc, vehicle,
+			CFrame.new(discCentre - Vector3.yAxis * 0.765) * CFrame.Angles(0, side * math.pi / 2, 0))
+			or cylinder(vehicle, "Disque", 0.25, 1.53, discCentre, trim)
+		disc.Material = Enum.Material.Metal
+		local caliper = part(vehicle, "Étrier", Vector3.new(0.21, 0.28, 0.39), hub + Vector3.new(side * 0.39, 0.56, 0.12), teal)
+		local bearing = cylinder(vehicle, "Moyeu", 0.21, 0.37, hub + Vector3.xAxis * side * 0.47, trim)
+		world.wheels[name] = { tire = tire, paint = tire.Color, disc = disc, caliper = caliper, bearing = bearing }
 	end
-	world.targets.Door = target(vehicle, "Porte conducteur", Vector3.new(-3.52, 3.02, 0.45))
-	world.headlights = {}
-	for _, x in { -2.02, 2.02 } do
-		local light = part(vehicle, "Feu de contrôle", Vector3.new(0.87, 0.20, 0.08), Vector3.new(x, 2.14, -6.88), yellow, false, Enum.Material.Neon)
-		light.Transparency = 1
-		table.insert(world.headlights, light)
+	world.lamps = {}
+	for _, name in { "FrontLamp", "RearLamp" } do
+		world.lamps[name] = {}
+		for _, x in { -2.02, 2.02 } do
+			local front = name == "FrontLamp"
+			local light = part(vehicle, "Feu de contrôle", Vector3.new(0.82, 0.16, 0.08),
+				Vector3.new(x, 2.14, if front then -6.79 else 6.77), if front then yellow else red, false, Enum.Material.Neon)
+			light.Transparency = 1
+			table.insert(world.lamps[name], light)
+		end
 	end
 	world.room:SetAttribute("OriginalModels", meshes.Sedan ~= nil and meshes.SedanHood ~= nil and meshes.FrontLeft ~= nil
 		and meshes.FrontRight ~= nil and meshes.BackLeft ~= nil and meshes.BackRight ~= nil and meshes.LiftBase ~= nil and meshes.Wrench ~= nil)
@@ -426,28 +439,31 @@ local function tweenModel(actor, goal, duration, onMove, style)
 end
 
 function World.build()
-	local world = { room = model(workspace, "Le Petit Atelier"), targets = {}, spawns = {}, tools = {}, cargo = {}, gates = {}, wheels = {}, bodies = {} }
+	local world = { room = model(workspace, "Le Petit Atelier"), targets = {}, spawns = {}, gates = {}, wheels = {}, bodies = {} }
 	buildShell(world)
 	world.meshes = MeshLibrary.load()
 	buildStations(world)
 	buildBay(world)
 	buildVehicle(world)
 	Decor.build(world, part, cloneMesh)
+	Gear.build(world, part, cloneMesh, target, sign)
+	GarageProps.build(world, part, model, cloneMesh, target, sign)
 	World.selectVehicle(world, "Sedan")
 	return world
 end
 
 function World.setObjective(world, targetName)
-	local objective = world.targets[targetName]
+	local objective = if typeof(targetName) == "Instance" then targetName else world.targets[targetName]
 	world.objective.Adornee = objective
 	world.objective.Enabled = objective ~= nil
 end
 
-function World.updateBoard(world, state, plan)
-	Decor.updateBoard(world, state, plan, Repair.jobs)
+function World.updateBoard(world, state)
+	Decor.updateBoard(world, state, Repair.jobs)
 end
 
 function World.selectVehicle(world, variant)
+	world.history = { wheels = {}, components = {} }
 	world.body = world.bodies[variant]
 	for name, body in world.bodies do
 		for _, panel in body.parts do panel.Transparency = if name == variant then 0 else 1 end
@@ -455,10 +471,10 @@ function World.selectVehicle(world, variant)
 	world.vehicle:SetAttribute("Carrosserie", variant)
 end
 
-function World.animate(world, motion)
+function World.animate(world, motion, liftTime)
 	if motion == "raise" or motion == "lower" then
 		local goal = world.liftBase + Vector3.yAxis * (if motion == "raise" then 2.85 else 0)
-		tweenModel(world.carriage, goal, 0.9, function(pose)
+		tweenModel(world.carriage, goal, liftTime, function(pose)
 			world.vehicle:PivotTo(world.dockPose + Vector3.yAxis * (pose.Y - world.liftBase.Y))
 		end, Enum.EasingStyle.Sine)
 	else
@@ -467,11 +483,45 @@ function World.animate(world, motion)
 	end
 end
 
-function World.testIgnition(world)
-	for _, light in world.headlights do light.Transparency = 0 end
-	task.delay(0.68, function()
-		for _, light in world.headlights do light.Transparency = 1 end
-	end)
+function World.effect(world, step)
+	local action = step.action
+	local pivot = world.vehicle:GetPivot()
+	if action == "ignition" or action == "testLights" or action == "verifyLights" then
+		world.lightTest = (world.lightTest or 0) + 1
+		local test = world.lightTest
+		for key, lights in world.lamps do
+			for index, light in lights do light.Transparency = if key == step.component and index == 2 then 1 else 0 end
+		end
+		task.delay(0.85, function()
+			if test ~= world.lightTest then return end
+			for _, lights in world.lamps do
+				for _, light in lights do light.Transparency = 1 end
+			end
+		end)
+	elseif action == "testWipers" then
+		for blade, home in world.wiperHomes do
+			local sweep = TweenService:Create(blade, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 0, true), {
+				CFrame = pivot * home * CFrame.Angles(0, -1.0, 0.42),
+			})
+			sweep:Play()
+		end
+	elseif action == "testWindow" or action == "verifyWindow" then
+		local pane = world.windowPane
+		pane.Transparency = 0.35
+		pane.CFrame = pivot * world.windowHome
+		local run = TweenService:Create(pane, TweenInfo.new(0.34, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 0, true), {
+			CFrame = pane.CFrame - Vector3.yAxis * (if action == "testWindow" then 0.14 else 0.69),
+		})
+		run.Completed:Once(function() pane.Transparency = 1 end)
+		run:Play()
+	end
+end
+
+function World.recordRepair(world, repair)
+	for key, value in repair.wheels do
+		if world.history.wheels[key] ~= "new" or value == "new" then world.history.wheels[key] = value end
+	end
+	for key, value in repair.components do world.history.components[key] = value end
 end
 
 function World.apply(world, state, repair)
@@ -488,32 +538,33 @@ function World.apply(world, state, repair)
 			end
 		end
 	end
-	for name, parts in world.wheels do
-		local removed = repair.removed[name] == true
-		if removed and parts.tire.Parent ~= world.room then
-			parts.tire.Parent = world.room
-			parts.tire.CFrame = parts.removed
-		elseif not removed and parts.tire.Parent ~= world.vehicle then
-			parts.tire.Parent = world.vehicle
-			parts.tire.CFrame = world.vehicle:GetPivot() * parts.home
-		end
-		parts.disc.Transparency = if removed then 0 else 1
-		parts.caliper.Transparency = if removed and (repair.replaced[name] or not parts.originalDisc) then 0 else 1
-		parts.caliper.Color = if repair.replaced[name] then mint else teal
-	end
-	for job, tool in world.tools do
-		tool.Transparency = if repair.job == job and repair.toolOwner ~= 0 then 1 else 0
-	end
-	world.gaugeFace.Transparency = world.tools.pressure.Transparency
-	for item, propPart in world.cargo do
-		local show = if Repair.cargo[item].stock then not repair.carried[item] else state.phase == "repair" and Repair.canTake(repair, item)
-		propPart.Transparency = if show then 0 else 1
+	local history = world.history
+	for name, wheel in world.wheels do
+		local status = repair.wheels[name] or history.wheels[name]
+		local pads = repair.components["Pads" .. name] or history.components["Pads" .. name]
+		local bearing = repair.components["Bearing" .. name] or history.components["Bearing" .. name]
+		local removed = status == "removed"
+		wheel.tire.Transparency = if removed then 1 else 0
+		wheel.tire.Color = if status == "new" or history.wheels[name] == "new" then wheel.paint:Lerp(Color3.fromRGB(224, 230, 227), 0.07) else wheel.paint
+		wheel.disc.Transparency = if removed then 0 else 1
+		wheel.caliper.Transparency = if pads == "removed" then 1 else wheel.disc.Transparency
+		wheel.caliper.Color = if pads == "new" then mint else teal
+		wheel.bearing.Transparency = if removed and bearing ~= "removed" then 0 else 1
+		wheel.bearing.Color = if bearing == "new" then Color3.fromRGB(213, 223, 220) else trim
 	end
 	local step = Repair.current(repair)
 	local engineVisible = repair.hoodOpen or (repair.moving and step and step.motion == "openHood")
 	for _, enginePart in world.engineBay:GetChildren() do enginePart.Transparency = if engineVisible then 0 else 1 end
-	if repair.battery == "empty" then world.battery.Transparency = 1 end
-	world.battery.Color = if repair.battery == "new" then Color3.fromRGB(225, 255, 225) else Color3.fromRGB(170, 168, 154)
+	for key, pieces in world.components do
+		local status = repair.components[key] or history.components[key]
+		for _, piece in pieces do
+			piece.Transparency = if status == "removed" or (piece.Parent == world.engineBay and not engineVisible) then 1 else 0
+			local base = world.originalColors[piece]
+			piece.Color = if status == "new" then base:Lerp(Color3.fromRGB(204, 220, 220), 0.21) else base
+		end
+	end
+	Gear.sync(world, repair)
+	GarageProps.apply(world, state)
 end
 
 function World.markParking(world, phase, ready)
@@ -527,18 +578,30 @@ function World.markParking(world, phase, ready)
 end
 
 function World.makeEquipment(world, key, title)
-	local tool = Instance.new("Tool")
-	tool.Name = title
-	tool.CanBeDropped = false
-	tool.Grip = CFrame.new(0, 0.04, 0.28) * CFrame.Angles(0, math.pi / 2, 0)
-	local handle = (world.tools[key] or world.cargo[key]):Clone()
-	handle.Name = "Handle"
-	handle.Anchored = false
-	handle.Massless = true
-	handle.Size *= 0.8
-	handle.Transparency = 0
-	handle.Parent = tool
-	return tool
+	return Gear.equipment(world, key, title)
+end
+
+function World.setEvening(world, evening)
+	TweenService:Create(Lighting, TweenInfo.new(1.7, Enum.EasingStyle.Sine), {
+		ClockTime = if evening then 18.05 else 14.2,
+		Brightness = if evening then 1.6 else 2.22,
+		OutdoorAmbient = if evening then Color3.fromRGB(136, 143, 154) else Color3.fromRGB(152, 162, 156),
+	}):Play()
+	Decor.setEvening(world, evening)
+end
+
+function World.moveVendor(world, arriving)
+	local vendor = world.vendor
+	if arriving then
+		vendor:PivotTo(world.vendorEntry)
+		vendor.Parent = world.room
+		World.setEvening(world, true)
+		tweenModel(vendor, world.vendorParking, 2.15, nil, Enum.EasingStyle.Sine)
+	else
+		World.setEvening(world, false)
+		tweenModel(vendor, world.vendorEntry, 1.85, nil, Enum.EasingStyle.Sine)
+		vendor.Parent = nil
+	end
 end
 
 local customerColors = { Camille = teal, Noah = red, ["Léa"] = Color3.fromRGB(180, 138, 63), Alex = Color3.fromRGB(97, 111, 162) }

@@ -1,44 +1,120 @@
 --!strict
 
-export type Phase = "free" | "arrival" | "reception" | "intake" | "repair" | "outbound" | "checkout" | "payment" | "departing" | "done"
-export type Job = "brakes" | "pressure" | "oil" | "battery"
-type Order = { read name: string, read job: Job, read amount: number, read vehicle: "Sedan" | "Sport" }
+export type Phase = "free" | "arrival" | "reception" | "intake" | "repair" | "outbound" | "checkout" | "payment" | "departing" | "closing" | "vendor"
+type JobInfo = { read name: string, read amount: number, read unlock: number }
+type Catalog = { read [string]: JobInfo }
+type Offer = { name: string, price: number, description: string, temporary: boolean?, unlock: number? }
+export type Order = {
+	name: string, jobs: { string }, vehicle: "Sedan" | "Sport", estimate: number, amount: number,
+	paid: boolean, late: boolean, patience: number, snacks: number, snackUntil: number, lateSeconds: number,
+}
 export type State = {
-	phase: Phase,
-	day: number,
-	ticket: number,
-	cash: number,
-	served: number,
-	dailyCash: number,
-	driver: number,
+	phase: Phase, day: number, ticket: number, repairIndex: number, driver: number,
+	cash: number, served: number, dailyCash: number, totalEarned: number, spent: number, lastInvoice: number,
+	orders: { Order }, catalog: Catalog, pick: (number) -> number, seen: { [string]: number },
+	purchases: { [string]: boolean }, nextServices: { [string]: boolean }, activeServices: { [string]: boolean },
+	offers: { string }, rerolled: boolean, extraBooked: boolean, rating: number, guaranteeUsed: boolean,
 }
 
 local Service = {}
-local camille = table.freeze({ name = "Camille", job = "brakes", amount = 48, vehicle = "Sedan" } :: Order)
-local noah = table.freeze({ name = "Noah", job = "pressure", amount = 25, vehicle = "Sport" } :: Order)
-local lea = table.freeze({ name = "Léa", job = "oil", amount = 35, vehicle = "Sedan" } :: Order)
-local alex = table.freeze({ name = "Alex", job = "battery", amount = 45, vehicle = "Sport" } :: Order)
-local plans: { { Order } } = {
-	table.freeze({ camille, noah, lea }),
-	table.freeze({ alex, noah }),
-	table.freeze({ lea, camille, alex }),
+local quotas = { 2, 2, 3, 3, 4, 4, 5, 5, 6, 7 }
+Service.maxAppointments = 9
+local names = { "Camille", "Noah", "Léa", "Sacha", "Maël", "Zia", "Alex", "Inès", "Charlie", "Sam", "Jules", "Morgan" }
+local offers: { [string]: Offer } = {
+	lift = { name = "Élévateur rapide", price = 60, description = "Les montées et descentes du pont prennent 38 % moins de temps." },
+	counter = { name = "Desserte double", price = 75, description = "Installe deux surfaces où poser et reprendre des pièces." },
+	compressor = { name = "Compresseur pro", price = 50, description = "Divise par deux le temps de réglage de la pression." },
+	impact = { name = "Clé à choc pro", price = 50, description = "Desserre et resserre les roues deux fois plus vite." },
+	light_cart = { name = "Chariot léger", price = 65, description = "Pousse le chariot à ta vitesse normale." },
+	lounge = { name = "Salle d’attente confort", price = 80, description = "Les clients perdent patience 25 % plus lentement." },
+	loyalty = { name = "Contrat fidélité", price = 95, description = "Ajoute 8 $ aux factures des clients servis à temps." },
+	reception = { name = "Renfort à l’accueil", price = 15, description = "Demain, accueille les clients deux fois plus vite.", temporary = true },
+	advertising = { name = "Publicité locale", price = 22, description = "Ajoute un rendez-vous au planning de demain.", temporary = true },
+	tuning = { name = "Réglage des ponts", price = 20, description = "Demain, les mouvements du pont durent 35 % de moins.", temporary = true },
+	diagnostic = { name = "Location d’une valise pro", price = 18, description = "Demain, inspecte les voitures deux fois plus vite.", temporary = true },
+	oil_recovery = { name = "Bac récupérateur", price = 135, description = "Récupère l’huile usée directement pendant la vidange.", unlock = 3 },
+	service_guarantee = { name = "Garantie d’accueil", price = 180, description = "Protège la première demi-étoile perdue par impatience chaque jour.", unlock = 5 },
+	express_shop = { name = "Atelier express", price = 240, description = "Réduit de 30 % le temps des gestes sur la voiture.", unlock = 7 },
+	vending = { name = "Distributrice", price = 70, description = "Offre jusqu’à quatre pauses-collation par client et majore les factures de 5 %." },
+	magazines = { name = "Porte-magazines", price = 35, description = "Réduit de 5 % la perte de patience en salle d’attente." },
 }
+Service.offers = table.freeze(offers)
+Service.rerollCost = 25
 
-function Service.plan(day: number): { Order }
-	return plans[(math.max(day, 1) - 1) % #plans + 1]
+function Service.new(catalog: Catalog, pick: (number) -> number): State
+	return {
+		phase = "free", day = 0, ticket = 1, repairIndex = 1, driver = 0, cash = 0, served = 0, dailyCash = 0,
+		totalEarned = 0, spent = 0, lastInvoice = 0, orders = {}, catalog = catalog, pick = pick, seen = {},
+		purchases = {}, nextServices = {}, activeServices = {}, offers = {}, rerolled = false, extraBooked = false,
+		rating = 10, guaranteeUsed = false,
+	}
 end
 
-function Service.new(): State
-	return { phase = "free", day = 0, ticket = 1, cash = 0, served = 0, dailyCash = 0, driver = 0 }
+function Service.current(state: State): Order?
+	return state.orders[state.ticket]
+end
+
+local function drawOrder(state: State): Order
+	local jobs, eligible, usedNames = {}, {}, {}
+	for _, order in state.orders do usedNames[order.name] = true end
+	local availableNames = {}
+	for _, name in names do if not usedNames[name] then table.insert(availableNames, name) end end
+	for id, spec in state.catalog do if spec.unlock <= state.day then table.insert(eligible, id) end end
+	table.sort(eligible)
+	local maximum = math.min(#eligible, 4, 2 + math.floor((state.day - 1) / 3))
+	local count = math.max(if state.day >= 7 then 2 else 1, state.pick(maximum))
+	local estimate = 0
+	for _ = 1, count do
+		local rarest = math.huge
+		local candidates = {}
+		for _, id in eligible do
+			local seen = state.seen[id] or 0
+			if seen < rarest then
+				table.clear(candidates)
+				rarest = seen
+			end
+			if seen == rarest then table.insert(candidates, id) end
+		end
+		local picked = candidates[state.pick(#candidates)]
+		table.insert(jobs, picked)
+		state.seen[picked] = (state.seen[picked] or 0) + 1
+		estimate += state.catalog[picked].amount
+		for i = #eligible, 1, -1 do
+			local id = eligible[i]
+			if id == picked or (picked == "tires" and id == "puncture") or (picked == "puncture" and id == "tires") then
+				table.remove(eligible, i)
+			end
+		end
+	end
+	return {
+		name = availableNames[state.pick(#availableNames)],
+		vehicle = if state.pick(3) == 1 then "Sport" else "Sedan",
+		jobs = jobs, estimate = estimate, amount = 0, paid = false, late = false,
+		patience = math.max(105, 164 - state.day * 4 + #jobs * 32), snacks = 0, snackUntil = 0, lateSeconds = 0,
+	}
 end
 
 function Service.open(state: State): boolean
-	if state.phase ~= "free" and state.phase ~= "done" then return false end
+	if state.phase ~= "free" and state.phase ~= "vendor" then return false end
 	state.day += 1
-	state.ticket = 1
-	state.served = 0
-	state.dailyCash = 0
+	state.ticket, state.repairIndex = 1, 1
+	state.served, state.dailyCash, state.lastInvoice = 0, 0, 0
+	state.rating, state.guaranteeUsed, state.extraBooked = 10, false, false
+	state.activeServices = state.nextServices
+	state.nextServices = {}
+	state.offers = {}
+	state.orders = {}
+	local count = quotas[math.min(state.day, #quotas)] + (if state.activeServices.advertising then 1 else 0)
+	for _ = 1, count do table.insert(state.orders, drawOrder(state)) end
 	state.phase = "arrival"
+	return true
+end
+
+function Service.book(state: State): boolean
+	if state.phase ~= "reception" and state.phase ~= "intake" and state.phase ~= "repair" then return false end
+	if state.extraBooked or #state.orders >= Service.maxAppointments then return false end
+	state.extraBooked = true
+	table.insert(state.orders, drawOrder(state))
 	return true
 end
 
@@ -67,9 +143,19 @@ function Service.park(state: State, playerId: number, aligned: boolean): boolean
 	return true
 end
 
-function Service.finishRepair(state: State, complete: boolean): boolean
-	if state.phase ~= "repair" or not complete then return false end
-	state.phase = "outbound"
+function Service.finishRepair(state: State, job: string, billable: boolean, declined: boolean, surcharge: number, addBattery: boolean): boolean
+	local order = Service.current(state)
+	if state.phase ~= "repair" or not order or order.jobs[state.repairIndex] ~= job then return false end
+	if billable then order.amount += state.catalog[job].amount + surcharge end
+	if declined then state.rating = math.max(0, state.rating - 1) end
+	if addBattery and not table.find(order.jobs, "battery") then
+		table.insert(order.jobs, "battery")
+		order.estimate += state.catalog.battery.amount
+	end
+	if surcharge > 0 then order.estimate += surcharge end
+	if not billable then order.estimate -= state.catalog[job].amount end
+	state.repairIndex += 1
+	if state.repairIndex > #order.jobs then state.phase = "outbound" end
 	return true
 end
 
@@ -77,11 +163,23 @@ function Service.readyToPay(state: State)
 	if state.phase == "checkout" then state.phase = "payment" end
 end
 
+function Service.invoice(state: State, order: Order): number
+	local amount = order.amount
+	if amount <= 0 then return 0 end
+	if state.purchases.loyalty and not order.late then amount += 8 end
+	if state.purchases.vending then amount = math.floor(amount * 1.05 + 0.5) end
+	return amount
+end
+
 function Service.pay(state: State): boolean
-	if state.phase ~= "payment" then return false end
-	local amount = Service.plan(state.day)[state.ticket].amount
+	local order = Service.current(state)
+	if state.phase ~= "payment" or not order or order.paid then return false end
+	order.paid = true
+	local amount = Service.invoice(state, order)
+	state.lastInvoice = amount
 	state.cash += amount
 	state.dailyCash += amount
+	state.totalEarned += amount
 	state.served += 1
 	state.phase = "departing"
 	return true
@@ -89,12 +187,120 @@ end
 
 function Service.departed(state: State)
 	if state.phase ~= "departing" then return end
-	if state.ticket < #Service.plan(state.day) then
+	if state.ticket < #state.orders then
 		state.ticket += 1
+		state.repairIndex = 1
 		state.phase = "arrival"
 	else
-		state.phase = "done"
+		state.phase = "closing"
 	end
+end
+
+function Service.owns(state: State, id: string): boolean
+	local offer = offers[id]
+	if not offer then return false end
+	return (if offer.temporary then state.nextServices[id] else state.purchases[id]) == true
+end
+
+local function drawOffers(state: State, replacing: boolean): { string }
+	local primary: {string} = {}
+	local previous: {string} = {}
+	for id, offer in offers do
+		if not Service.owns(state, id) and state.day >= (offer.unlock or 1) then
+			local pool = if replacing and table.find(state.offers, id) then previous else primary
+			table.insert(pool, id)
+		end
+	end
+	if replacing and #primary == 0 then return {} end
+	table.sort(primary)
+	table.sort(previous)
+	local stock = {}
+	for _ = 1, 3 do
+		local pool = if #primary > 0 then primary else previous
+		if #pool == 0 then break end
+		local index = state.pick(#pool)
+		table.insert(stock, pool[index])
+		table.remove(pool, index)
+	end
+	return stock
+end
+
+function Service.openMarket(state: State): boolean
+	if state.phase ~= "closing" then return false end
+	state.offers = drawOffers(state, false)
+	state.rerolled = false
+	state.phase = "vendor"
+	return true
+end
+
+function Service.buy(state: State, id: string): (boolean, string)
+	local offer = offers[id]
+	if state.phase ~= "vendor" or not offer or not table.find(state.offers, id) then return false, "Cette offre a pris fin." end
+	if Service.owns(state, id) then return false, "Cet article est déjà acheté." end
+	if state.cash < offer.price then return false, "La caisse ne suffit pas encore." end
+	local inventory = if offer.temporary then state.nextServices else state.purchases
+	inventory[id] = true
+	state.cash -= offer.price
+	state.spent += offer.price
+	return true, offer.name .. (if offer.temporary then " réservé pour demain." else " installé au garage.")
+end
+
+function Service.reroll(state: State): (boolean, string)
+	if state.phase ~= "vendor" or state.rerolled then return false, "Renouvellement déjà utilisé." end
+	if state.cash < Service.rerollCost then return false, "Il faut 25 $ pour renouveler les offres." end
+	local stock = drawOffers(state, true)
+	if #stock == 0 then return false, "Le marchand n’a plus d’autres articles." end
+	state.cash -= Service.rerollCost
+	state.spent += Service.rerollCost
+	state.rerolled = true
+	state.offers = stock
+	return true, "La caravane a sorti de nouvelles offres."
+end
+
+function Service.passTime(state: State, dt: number, now: number): boolean
+	if state.phase == "free" or state.phase == "arrival" or state.phase == "departing" or state.phase == "closing" or state.phase == "vendor" then return false end
+	local order = Service.current(state)
+	if not order or now < order.snackUntil then return false end
+	local rate = if state.purchases.lounge then 0.75 else 1
+	if state.phase ~= "reception" then
+		rate *= 0.67
+		if state.purchases.magazines then rate *= 0.95 end
+		if state.purchases.vending then rate *= 0.95 end
+	end
+	if order.patience > 0 then
+		order.patience = math.max(0, order.patience - dt * rate)
+		if order.patience > 0 then return false end
+		order.late = true
+	else
+		order.lateSeconds += dt
+		if order.lateSeconds < 14 or state.rating == 0 then return false end
+		order.lateSeconds -= 14
+	end
+	if state.purchases.service_guarantee and not state.guaranteeUsed then state.guaranteeUsed = true
+	else state.rating = math.max(0, state.rating - 1) end
+	return true
+end
+
+function Service.snack(state: State, now: number): boolean
+	local order = Service.current(state)
+	if not order or not state.purchases.vending or order.snacks >= 4 or now < order.snackUntil
+		or (state.phase ~= "intake" and state.phase ~= "repair" and state.phase ~= "outbound") then return false end
+	order.snacks += 1
+	order.snackUntil = now + 10
+	return true
+end
+
+function Service.hold(state: State, seconds: number, rate: string?, carWork: boolean): number
+	if carWork and state.purchases.express_shop then seconds *= 0.70 end
+	if (rate == "impact" and state.purchases.impact) or (rate == "compressor" and state.purchases.compressor)
+		or (rate == "reception" and state.activeServices.reception) or (rate == "diagnostic" and state.activeServices.diagnostic) then
+		seconds *= 0.5
+	end
+	return seconds
+end
+
+function Service.liftTime(state: State): number
+	return 0.9 * (if state.purchases.lift then 0.625 else 1) * (if state.activeServices.tuning then 0.65 else 1)
 end
 
 function Service.release(state: State, playerId: number)

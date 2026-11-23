@@ -3,168 +3,237 @@
 local Repair = require("../src/shared/Repair")
 local Service = require("../src/shared/Service")
 
-local function act(repair: Repair.State, playerId: number, action: string)
-	assert(Repair.act(repair, playerId, action), `Expected {action} for player {playerId} at step {repair.step}`)
-end
-
-local function motion(repair: Repair.State, playerId: number, action: string)
-	act(repair, playerId, action)
-	assert(repair.moving)
-	assert(not Repair.act(repair, playerId, action))
-	Repair.finishMotion(repair)
-	assert(not repair.moving)
-end
-
-local function collect(repair: Repair.State, playerId: number, item: Repair.Cargo)
-	assert(Repair.take(repair, playerId, item), `Expected {item} to be available at step {repair.step}`)
-	assert(not Repair.take(repair, playerId + 100, item))
-end
-
-local function brakes(repair: Repair.State, mechanic: number, partsRunner: number)
-	assert(not Repair.act(repair, mechanic, "loosenFrontLeft"))
-	act(repair, mechanic, "raise")
-	assert(repair.moving and repair.step == 1)
-	assert(not Repair.act(repair, partsRunner, "raise"))
-	act(repair, mechanic, "takeTool")
-	assert(not Repair.act(repair, 100, "takeTool"))
-	assert(not Repair.act(repair, 100, "returnTool"))
-	collect(repair, partsRunner, "pads")
-	Repair.finishMotion(repair)
-	assert(repair.step == 2 and repair.raised and not repair.moving)
-	for i, wheel in { "FrontLeft", "FrontRight" } do
-		assert(not Repair.act(repair, 100, "loosen" .. wheel))
-		act(repair, mechanic, "loosen" .. wheel)
-		assert(not Repair.act(repair, mechanic, "loosen" .. wheel))
-		act(repair, mechanic, "remove" .. wheel)
-		assert(repair.removed[wheel])
-		if i == 2 then collect(repair, partsRunner, "pads") end
-		assert(not Repair.act(repair, 100, "install" .. wheel))
-		act(repair, partsRunner, "install" .. wheel)
-		assert(repair.replaced[wheel] and not repair.carried.pads)
-		assert(Repair.canTake(repair, "pads") == (i == 1))
-		act(repair, partsRunner, "mount" .. wheel)
-		assert(not repair.removed[wheel])
-		act(repair, mechanic, "tighten" .. wheel)
+local mechanic, assistant, stranger = 1, 2, 99
+local function runStep(repair: Repair.State, actor: number)
+	local current = assert(Repair.current(repair))
+	assert(not Repair.act(repair, stranger, "outOfOrder"))
+	if current.tool then
+		assert(not Repair.act(repair, stranger, current.action))
+		if repair.tools[current.tool] ~= actor then assert(Repair.takeTool(repair, actor, current.tool)) end
+		assert(not Repair.takeTool(repair, stranger, current.tool))
 	end
-	act(repair, mechanic, "lower")
-	assert(repair.moving and Repair.current(repair))
-	Repair.finishMotion(repair)
-	assert(not repair.moving and not repair.raised and not Repair.current(repair))
+	if current.cargo and repair.carried[current.cargo] ~= actor then
+		assert(not Repair.act(repair, actor, current.action))
+		assert(Repair.source(repair, current.cargo), current.cargo .. " is missing")
+		assert(Repair.take(repair, actor, current.cargo))
+		assert(not Repair.take(repair, stranger, current.cargo))
+	end
+	assert(Repair.act(repair, actor, current.action), repair.job .. " / " .. current.action)
+	if current.motion then
+		assert(repair.moving and Repair.current(repair) == current)
+		assert(not Repair.act(repair, mechanic, current.action))
+		Repair.finishMotion(repair)
+	end
+	assert(Repair.current(repair) ~= current)
 end
 
-local function pressure(repair: Repair.State, mechanic: number)
-	assert(not Repair.act(repair, mechanic, "measure"))
-	assert(not Repair.canTake(repair, "pads"))
-	act(repair, mechanic, "takeTool")
-	assert(not Repair.act(repair, mechanic, "inflate"))
-	act(repair, mechanic, "measure")
-	assert(repair.pressure == 28)
-	act(repair, mechanic, "inflate")
-	assert(repair.pressure == 34)
-	act(repair, mechanic, "verifyPressure")
+local function finish(repair: Repair.State)
+	while Repair.current(repair) do runStep(repair, mechanic) end
+	assert(not repair.raised and not repair.moving and not repair.hoodOpen)
+	assert(next(repair.carried) == nil and next(repair.placements) == nil, repair.job)
 end
 
-local function oil(repair: Repair.State, mechanic: number, partsRunner: number)
-	assert(not Repair.canTake(repair, "usedOil"))
-	collect(repair, mechanic, "pan")
-	motion(repair, mechanic, "raise")
-	act(repair, mechanic, "drain")
-	assert(repair.raised and not repair.carried.pan and not Repair.canTake(repair, "pan"))
-	assert(not Repair.act(repair, mechanic, "recycleOil"))
-	collect(repair, partsRunner, "usedOil")
-	Repair.release(repair, partsRunner)
-	collect(repair, mechanic, "usedOil")
-	act(repair, mechanic, "recycleOil")
-	assert(not Repair.canTake(repair, "usedOil"))
-	motion(repair, mechanic, "lower")
-	collect(repair, partsRunner, "freshOil")
-	motion(repair, mechanic, "openHood")
-	assert(repair.hoodOpen and not repair.raised)
-	assert(not Repair.act(repair, 100, "fillOil"))
-	act(repair, partsRunner, "fillOil")
-	assert(repair.carried.emptyBottle == partsRunner and not repair.carried.freshOil)
-	Repair.release(repair, partsRunner)
-	collect(repair, mechanic, "emptyBottle")
-	act(repair, mechanic, "recycleBottle")
-	motion(repair, mechanic, "closeHood")
-	assert(not repair.hoodOpen)
-end
-
-local function battery(repair: Repair.State, mechanic: number, partsRunner: number)
-	collect(repair, partsRunner, "newBattery")
-	assert(not Repair.act(repair, mechanic, "takeTool"))
-	assert(not Repair.act(repair, partsRunner, "installBattery"))
-	motion(repair, mechanic, "openHood")
-	act(repair, mechanic, "removeBattery")
-	assert(repair.battery == "empty" and repair.carried.oldBattery == mechanic)
-	assert(not Repair.act(repair, 100, "recycleBattery"))
-	Repair.release(repair, mechanic)
-	collect(repair, mechanic, "oldBattery")
-	act(repair, mechanic, "recycleBattery")
-	if mechanic == partsRunner then collect(repair, partsRunner, "newBattery") end
-	act(repair, partsRunner, "installBattery")
-	assert(repair.battery == "new" and not repair.carried.newBattery)
-	assert(not Repair.act(repair, mechanic, "testIgnition"))
-	motion(repair, mechanic, "closeHood")
-	act(repair, mechanic, "testIgnition")
-end
-
-local function park(service: Service.State, driver: number)
-	assert(not Service.park(service, 0, true))
-	assert(Service.beginDrive(service, driver))
-	assert(not Service.beginDrive(service, 100))
-	assert(not Service.park(service, 100, true))
-	assert(not Service.park(service, driver, false))
-	Service.release(service, driver)
-	assert(Service.beginDrive(service, driver))
-	assert(Service.park(service, driver, true))
-	assert(service.driver == 0)
-end
-
-local function trial(mechanic: number, partsRunner: number)
-	local service = Service.new()
-	assert(not Service.pay(service) and not Service.beginDrive(service, mechanic))
-	local jobs = { brakes = brakes, pressure = pressure, oil = oil, battery = battery }
-	local total = 0
-	for day, revenue in { 108, 70, 128, 108 } do
-		assert(Service.open(service) and service.day == day)
-		assert(service.served == 0 and service.dailyCash == 0 and service.cash == total)
-		assert(not Service.open(service))
-		local plan = Service.plan(day)
-		for i, order in plan do
-			local repair = Repair.new(order.job)
-			assert(service.phase == "arrival" and service.ticket == i)
-			assert(not Service.receive(service))
-			Service.arrived(service)
-			assert(Service.receive(service) and not Service.receive(service))
-			park(service, mechanic)
-			assert(not Service.finishRepair(service, Repair.current(repair) == nil))
-			if order.job == "pressure" then pressure(repair, mechanic)
-			else jobs[order.job](repair, mechanic, partsRunner) end
-			assert(Service.finishRepair(service, Repair.current(repair) == nil))
-			assert(not Service.pay(service))
-			park(service, mechanic)
-			assert(not Service.pay(service))
-			Service.readyToPay(service)
-			assert(Service.pay(service) and not Service.pay(service))
-			Service.departed(service)
+local variants: { Repair.Faults } = {
+	{ wheel = "FrontLeft", rightDamper = true, rearLamp = true, crackedShield = true, badPuncture = true,
+		windowModule = true, weakBattery = true, highPressure = true, oilRecovery = true },
+	{ wheel = "BackLeft" }, { wheel = "FrontRight" }, { wheel = "BackRight" }, {},
+}
+local jobCount, cases = 0, 0
+local allTools, allCargo = {}, {}
+for id in Repair.jobs do
+	jobCount += 1
+	for _, faults in variants do
+		local repair = Repair.new(id, faults)
+		for _, step in repair.steps do
+			assert(step.title ~= "" and step.target ~= "" and step.hold >= 0)
+			if step.tool then allTools[step.tool] = true end
+			if step.cargo then allCargo[step.cargo] = true end
 		end
-		total += revenue
-		assert(service.phase == "done" and service.served == #plan and service.cash == total and service.dailyCash == revenue)
+		finish(repair)
+		if id == "pressure" then assert(repair.pressure == 34) end
+		if id == "window" then assert(repair.surcharge == (if faults.windowModule then 18 else 0)) end
+		if id == "inspection" then assert(repair.addBattery == (faults.weakBattery == true)) end
+		cases += 1
+	end
+end
+assert(jobCount == 16 and cases == 80)
+for id in Repair.tools do assert(allTools[id], id) end
+for id in Repair.cargo do assert(allCargo[id], id) end
+
+local tires = Repair.new("tires")
+runStep(tires, mechanic)
+assert(Repair.takeTool(tires, mechanic, "impact") and Repair.take(tires, mechanic, "newTire"))
+assert(not Repair.act(tires, mechanic, "loosen"))
+Repair.release(tires, mechanic)
+runStep(tires, mechanic)
+runStep(tires, mechanic)
+assert(tires.raised and tires.wheels.FrontLeft == "removed")
+assert(Repair.source(tires, "usedTire") == "FloorFrontLeft")
+assert(Repair.take(tires, assistant, "usedTire"))
+assert(not Repair.take(tires, assistant, "newTire"))
+assert(not Repair.act(tires, mechanic, "recycle_usedTire"))
+assert(Repair.drop(tires, assistant, "Counter1") == "usedTire")
+assert(Repair.source(tires, "usedTire") == "Counter1")
+assert(Repair.take(tires, mechanic, "usedTire"))
+Repair.release(tires, mechanic)
+assert(Repair.using(tires, mechanic) == nil and Repair.source(tires, "usedTire") == "Recovery")
+assert(Repair.take(tires, assistant, "usedTire"))
+assert(Repair.drop(tires, assistant, "Ground") == "usedTire")
+assert(Repair.source(tires, "usedTire") == "Ground")
+runStep(tires, assistant)
+runStep(tires, assistant)
+runStep(tires, mechanic)
+finish(tires)
+for _, wheel in Repair.wheels do assert(tires.wheels[wheel] == "new") end
+
+local puncture = Repair.new("puncture", { wheel = "BackRight" })
+for _ = 1, 3 do runStep(puncture, mechanic) end
+assert(Repair.source(puncture, "serviceWheel") == "FloorBackRight")
+runStep(puncture, assistant)
+assert(puncture.placements.serviceWheel == "Bench" and Repair.source(puncture, "serviceWheel") == nil)
+runStep(puncture, mechanic)
+runStep(puncture, assistant)
+assert(Repair.source(puncture, "serviceWheel") == "Bench")
+finish(puncture)
+assert(puncture.wheels.BackRight == "installed")
+
+local brakes = Repair.new("brakes")
+for _ = 1, 4 do runStep(brakes, mechanic) end
+assert(brakes.placements.serviceWheel == "WheelStand")
+runStep(brakes, mechanic)
+assert(Repair.using(brakes, mechanic) == "ratchet" and Repair.using(brakes, assistant) == nil)
+assert(Repair.carrying(brakes, mechanic) == "oldPads")
+assert(Repair.drop(brakes, mechanic, "Ground") == "oldPads")
+runStep(brakes, assistant)
+finish(brakes)
+assert(brakes.components.PadsFrontLeft == "new" and brakes.components.PadsFrontRight == "new")
+
+local window = Repair.new("window", { windowModule = true })
+assert(not Repair.decline(window))
+runStep(window, mechanic)
+assert(Repair.decline(window) and not window.billable)
+assert(not Repair.decline(window) and Repair.current(window) == nil)
+local inspection = Repair.new("inspection", { weakBattery = true })
+for _ = 1, 3 do runStep(inspection, mechanic) end
+assert(Repair.decline(inspection) and inspection.billable and not inspection.addBattery)
+
+local function random(seed: number): (number) -> number
+	return function(maximum: number): number
+		assert(maximum >= 1)
+		seed = (seed * 48271) % 2147483647
+		return seed % maximum + 1
 	end
 end
 
-trial(-1, -1)
-trial(-1, -2)
+local function park(state: Service.State)
+	assert(Service.beginDrive(state, mechanic))
+	assert(not Service.beginDrive(state, assistant))
+	assert(not Service.park(state, assistant, true) and not Service.park(state, mechanic, false))
+	assert(Service.park(state, mechanic, true))
+end
 
-local handoff = Repair.new("brakes")
-act(handoff, 1, "takeTool")
-collect(handoff, 1, "pads")
-Repair.release(handoff, 1)
-assert(handoff.toolOwner == 0 and not handoff.carried.pads)
-act(handoff, 2, "takeTool")
-act(handoff, 2, "returnTool")
-act(handoff, 3, "takeTool")
-collect(handoff, 2, "pads")
+local function serve(state: Service.State)
+	assert(not Service.pay(state))
+	Service.arrived(state)
+	assert(Service.receive(state) and not Service.receive(state))
+	park(state)
+	local order = assert(Service.current(state))
+	for _, id in order.jobs do
+		assert(not Service.finishRepair(state, "unknown", true, false, 0, false))
+		assert(Service.finishRepair(state, id, true, false, 0, false))
+	end
+	assert(state.phase == "outbound")
+	park(state)
+	Service.readyToPay(state)
+	local before = state.cash
+	local invoice = Service.invoice(state, order)
+	assert(Service.pay(state))
+	assert(state.cash == before + invoice and state.lastInvoice == invoice and order.paid)
+	assert(not Service.pay(state))
+	Service.departed(state)
+	return invoice
+end
 
-print("PASS · quatre interventions, partage et récupération des pièces, conduite, caisse et planning")
+local counts = {2, 2, 3, 3, 4, 4, 5, 5, 6, 7}
+local state = Service.new(Repair.jobs, random(47))
+local alternate = Service.new(Repair.jobs, random(200))
+assert(Service.open(alternate))
+local drawn = {}
+local permanentPurchased = {}
+local variation = false
+for day = 1, 12 do
+	assert(Service.open(state) and not Service.open(state))
+	local number = counts[math.min(day, #counts)] + (if state.activeServices.advertising then 1 else 0)
+	assert(state.day == day and #state.orders == number)
+	local customers: { [string]: boolean } = {}
+	local distinct: { [string]: boolean } = {}
+	for _, order in state.orders do
+		assert(not customers[order.name] and #order.jobs >= 1 and #order.jobs <= 4)
+		customers[order.name] = true
+		table.clear(distinct)
+		local estimate = 0
+		for _, id in order.jobs do
+			assert(not distinct[id] and Repair.jobs[id].unlock <= day)
+			distinct[id], drawn[id] = true, true
+			estimate += Repair.jobs[id].amount
+		end
+		assert(not (distinct.tires and distinct.puncture) and order.estimate == estimate)
+	end
+	if day == 1 then
+		variation = table.concat(state.orders[1].jobs, "/") ~= table.concat(alternate.orders[1].jobs, "/")
+		Service.arrived(state)
+		assert(Service.book(state) and not Service.book(state) and #state.orders == number + 1)
+	end
+	local dailyCash = 0
+	for _ in state.orders do dailyCash += serve(state) end
+	assert(state.phase == "closing" and state.dailyCash == dailyCash and state.served == #state.orders)
+	assert(Service.openMarket(state) and not Service.openMarket(state))
+	while #state.offers > 0 do
+		for _, id in state.offers do
+			local price = Service.offers[id].price
+			local before = state.cash
+			local bought = Service.buy(state, id)
+			if bought then
+				assert(state.cash == before - price and Service.owns(state, id))
+				if not Service.offers[id].temporary then permanentPurchased[id] = true end
+				assert(not Service.buy(state, id) and state.cash == before - price)
+			else
+				assert(state.cash == before)
+			end
+		end
+		if not Service.reroll(state) then break end
+		assert(state.rerolled)
+	end
+	assert(state.cash == state.totalEarned - state.spent)
+end
+assert(variation)
+for id in Repair.jobs do assert(drawn[id], id) end
+for id, offer in Service.offers do if not offer.temporary then assert(permanentPurchased[id], id) end end
+
+local quote = Service.new(Repair.jobs, random(3))
+quote.phase = "repair"
+quote.orders = { {name = "QA", jobs = {"inspection", "window"}, vehicle = "Sedan", estimate = 61, amount = 0, paid = false,
+	late = false, patience = 1, snacks = 0, snackUntil = 0, lateSeconds = 0} }
+local order = quote.orders[1]
+assert(Service.finishRepair(quote, "inspection", true, false, 0, true))
+assert(order.amount == 30 and order.estimate == 106 and order.jobs[3] == "battery")
+assert(Service.finishRepair(quote, "window", true, false, 18, false))
+assert(order.amount == 79 and order.estimate == 124)
+assert(Service.finishRepair(quote, "battery", true, false, 0, false))
+assert(order.amount == 124)
+quote.purchases.loyalty, quote.purchases.vending, quote.purchases.service_guarantee = true, true, true
+assert(Service.invoice(quote, order) == 139)
+assert(Service.snack(quote, 10) and not Service.snack(quote, 11))
+assert(not Service.passTime(quote, 11, 19))
+assert(Service.passTime(quote, 2, 21) and order.late and quote.rating == 10)
+assert(Service.passTime(quote, 14, 35) and quote.rating == 9)
+assert(Service.invoice(quote, order) == 130)
+quote.purchases.lift, quote.purchases.express_shop, quote.purchases.impact, quote.purchases.compressor = true, true, true, true
+quote.activeServices.tuning, quote.activeServices.diagnostic, quote.activeServices.reception = true, true, true
+assert(Service.liftTime(quote) < 0.40)
+for _, rate in {"impact", "compressor", "diagnostic"} do assert(Service.hold(quote, 2, rate, true) == 0.7) end
+assert(Service.hold(quote, 2, "reception", false) == 1)
+quote.cash, quote.phase, quote.offers = 0, "vendor", {"lift"}
+assert(not Service.buy(quote, "lift") and not Service.buy(quote, "unknown") and not Service.reroll(quote))
+
+print("PASS Roblox — 16 réparations et 80 variantes d’essai, tous les outils et composants, charge et dépose, commandes aléatoires, facturation et caravane.")
