@@ -54,6 +54,10 @@ function Service.current(state: State): Order?
 	return state.orders[state.ticket]
 end
 
+local function patienceFor(day: number, jobs: number): number
+	return math.max(105, 164 - day * 4 + jobs * 32)
+end
+
 local function drawOrder(state: State): Order
 	local jobs, eligible, usedNames = {}, {}, {}
 	for _, order in state.orders do usedNames[order.name] = true end
@@ -90,7 +94,7 @@ local function drawOrder(state: State): Order
 		name = availableNames[state.pick(#availableNames)],
 		vehicle = if state.pick(3) == 1 then "Sport" else "Sedan",
 		jobs = jobs, estimate = estimate, amount = 0, paid = false, late = false,
-		patience = math.max(105, 164 - state.day * 4 + #jobs * 32), snacks = 0, snackUntil = 0, lateSeconds = 0,
+		patience = patienceFor(state.day, #jobs), snacks = 0, snackUntil = 0, lateSeconds = 0,
 	}
 end
 
@@ -305,6 +309,109 @@ end
 
 function Service.release(state: State, playerId: number)
 	if state.driver == playerId then state.driver = 0 end
+end
+
+function Service.snapshot(state: State)
+	local orders = {}
+	for _, order in state.orders do
+		table.insert(orders, {
+			name = order.name, jobs = table.clone(order.jobs), vehicle = order.vehicle,
+			estimate = order.estimate, amount = order.amount, paid = order.paid,
+			late = order.late, snacks = order.snacks,
+		})
+	end
+	return {
+		version = 1, day = state.day, cash = state.cash, dailyCash = state.dailyCash,
+		totalEarned = state.totalEarned, spent = state.spent, lastInvoice = state.lastInvoice,
+		rating = state.rating, guaranteeUsed = state.guaranteeUsed, extraBooked = state.extraBooked,
+		orders = orders, seen = table.clone(state.seen), purchases = table.clone(state.purchases),
+		nextServices = table.clone(state.nextServices), activeServices = table.clone(state.activeServices),
+		market = state.phase == "vendor", offers = table.clone(state.offers), rerolled = state.rerolled,
+	}
+end
+
+local function count(value: unknown, limit: number): number?
+	if type(value) ~= "number" or value ~= value or value < 0 or value > limit or math.floor(value) ~= value then return nil end
+	return value
+end
+
+local function purchased(saved: any, temporary: boolean): { [string]: boolean }
+	local result = {}
+	if type(saved) == "table" then
+		for id, offer in offers do
+			if (offer.temporary == true) == temporary and saved[id] == true then result[id] = true end
+		end
+	end
+	return result
+end
+
+function Service.restore(state: State, saved: any): boolean
+	if type(saved) ~= "table" or saved.version ~= 1 or type(saved.orders) ~= "table" then return false end
+	local day = count(saved.day, 1e9)
+	local cash, total, spent = count(saved.cash, 1e12), count(saved.totalEarned, 1e12), count(saved.spent, 1e12)
+	local daily, last, rating = count(saved.dailyCash, 1e12), count(saved.lastInvoice, 1e12), count(saved.rating, 10)
+	if not day or not cash or not total or not spent or not daily or not last or not rating then return false end
+	if (day == 0) ~= (#saved.orders == 0) or #saved.orders > Service.maxAppointments then return false end
+	local restored: { Order } = {}
+	local paid = 0
+	for index = 1, #saved.orders do
+		local row = saved.orders[index]
+		if type(row) ~= "table" then return false end
+		local order = row :: { [string]: any }
+		local name, items, vehicle, wasPaid = order.name, order.jobs, order.vehicle, order.paid
+		if type(name) ~= "string" or #name > 48 or type(items) ~= "table" or #items == 0 or #items > 4
+			or (vehicle ~= "Sedan" and vehicle ~= "Sport") or type(wasPaid) ~= "boolean" then return false end
+		local jobs: { string } = {}
+		local estimate = 0
+		for index = 1, #items do
+			local id = (items :: { any })[index]
+			if type(id) ~= "string" or not state.catalog[id] or table.find(jobs, id) then return false end
+			table.insert(jobs, id)
+			estimate += state.catalog[id].amount
+		end
+		local amount = 0
+		if wasPaid then
+			if paid + 1 ~= index then return false end
+			paid += 1
+			amount = count(order.amount, 1e6) or 0
+			estimate = count(order.estimate, 1e6) or estimate
+		end
+		table.insert(restored, {
+			name = name, jobs = jobs, vehicle = vehicle, estimate = estimate, amount = amount,
+			paid = wasPaid, late = order.late == true, patience = patienceFor(day, #jobs),
+			snacks = count(order.snacks, 4) or 0, snackUntil = 0, lateSeconds = 0,
+		})
+	end
+	local phase: Phase = "free"
+	local marketOffers = {}
+	if day > 0 then
+		if paid < #restored then
+			phase = "arrival"
+		elseif saved.market == true and type(saved.offers) == "table" then
+			phase = "vendor"
+			for _, id in ipairs(saved.offers) do
+				if #marketOffers == 3 then break end
+				if type(id) == "string" and offers[id] and not table.find(marketOffers, id) then table.insert(marketOffers, id) end
+			end
+		else
+			phase = "closing"
+		end
+	end
+	local seen = {}
+	if type(saved.seen) == "table" then
+		for id in state.catalog do seen[id] = count(saved.seen[id], 1e12) end
+	end
+
+	state.phase, state.day, state.orders = phase, day, restored
+	state.ticket, state.repairIndex, state.driver = math.max(1, math.min(paid + 1, #restored)), 1, 0
+	state.cash, state.totalEarned, state.spent = cash, total, spent
+	state.served, state.dailyCash, state.lastInvoice, state.rating = paid, daily, last, rating
+	state.guaranteeUsed, state.extraBooked = saved.guaranteeUsed == true, saved.extraBooked == true
+	state.seen, state.offers, state.rerolled = seen, marketOffers, saved.rerolled == true
+	state.purchases = purchased(saved.purchases, false)
+	state.nextServices = purchased(saved.nextServices, true)
+	state.activeServices = purchased(saved.activeServices, true)
+	return true
 end
 
 return Service

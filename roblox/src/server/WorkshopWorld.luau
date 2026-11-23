@@ -7,6 +7,7 @@ local MeshLibrary = require(script.Parent.MeshLibrary)
 local Decor = require(script.Parent.AtelierDecor)
 local Gear = require(script.Parent.GearWorld)
 local GarageProps = require(script.Parent.GarageProps)
+local Doors = require(script.Parent.EntranceDoors)
 local Repair = require(ReplicatedStorage.GarageDay.Repair)
 
 local World = {}
@@ -167,8 +168,8 @@ local function buildShell(world)
 		end
 		wallSection({ side.x, last, 0.18, 13 - last }, roofHeight, 0)
 	end
-	for _, door in { {1.5, 12.82, 2, 0.18}, {5.89, 0, 1.63, 0.18}, {8.55, 12.82, 1.27, 0.18} } do
-		rectPart(room, "Linteau piéton", door, 2.25, roofHeight - 1.125, wall, true)
+	for _, door in Layout.pedestrianDoors do
+		rectPart(room, "Linteau piéton", { door.left, door.z, door.right - door.left, 0.18 }, 2.25, roofHeight - 1.125, wall, true)
 	end
 	for _, rect in { {-1.47, -17, 0.11, 57.2}, {23.37, -17, 0.11, 57.2}, {-1.5, -17, 25, 0.10}, {-1.5, 40.1, 25, 0.10} } do
 		local fence = rectPart(room, "Limite de la cour", rect, 4, 2, steel, true)
@@ -448,6 +449,7 @@ function World.build()
 	Decor.build(world, part, cloneMesh)
 	Gear.build(world, part, cloneMesh, target, sign)
 	GarageProps.build(world, part, model, cloneMesh, target, sign)
+	world.doors = Doors.build(world.room, part, model, roofHeight - 2.25)
 	World.selectVehicle(world, "Sedan")
 	return world
 end
@@ -602,6 +604,25 @@ function World.moveVendor(world, arriving)
 		tweenModel(vendor, world.vendorEntry, 1.85, nil, Enum.EasingStyle.Sine)
 		vendor.Parent = nil
 	end
+end
+
+function World.restoreVendor(world)
+	world.vendor:PivotTo(world.vendorParking)
+	world.vendor.Parent = world.room
+	World.setEvening(world, true)
+end
+
+function World.updateDoors(world, players, now)
+	local positions = {}
+	for _, player in players do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 then table.insert(positions, root.Position) end
+	end
+	if world.customer then table.insert(positions, world.customer:GetPivot().Position) end
+	table.insert(positions, world.cart.model:GetPivot().Position)
+	Doors.update(world.doors, positions, now)
 end
 
 local customerColors = { Camille = teal, Noah = red, ["Léa"] = Color3.fromRGB(180, 138, 63), Alex = Color3.fromRGB(97, 111, 162) }

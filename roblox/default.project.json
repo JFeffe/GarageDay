@@ -4,7 +4,10 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "GarageDay": {
-        "$path": "src/shared"
+        "$path": "src/shared",
+        "$attributes": {
+          "StudioStorage": "GarageDayV1"
+        }
       }
     },
     "ServerScriptService": {

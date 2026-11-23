@@ -78,6 +78,7 @@ local action = label(4, "Préparation du garage…", 19, cream, true)
 local hint = label(5, "", 13, cream, false)
 local held = label(7, "", 12, mint, false)
 local note = label(8, "", 12, gold, false)
+local saveNote = label(9, "", 12, gold, false)
 
 local rail = Instance.new("Frame")
 rail.LayoutOrder = 6
@@ -147,7 +148,8 @@ local function bindDrop(canDrop)
 	dropBound = canDrop
 	if canDrop then
 		ContextActionService:BindAction("GaragePoser", function(_, inputState)
-			if inputState == Enum.UserInputState.Begin and not playerGui:GetAttribute("CaravaneOpen") then carryControl:FireServer() end
+			if inputState == Enum.UserInputState.Begin and not playerGui:GetAttribute("CaravaneOpen")
+				and not playerGui:GetAttribute("WorkshopOptionsOpen") then carryControl:FireServer() end
 			return Enum.ContextActionResult.Sink
 		end, UserInputService.TouchEnabled, Enum.KeyCode.Q, Enum.KeyCode.ButtonB)
 		ContextActionService:SetTitle("GaragePoser", "Poser")
@@ -175,13 +177,21 @@ local function refresh()
 	for item, spec in Repair.cargo do
 		if session:GetAttribute("Carry_" .. item) == player.UserId then heldCargo = spec.name break end
 	end
-	reticleGui.Enabled = not driving and not playerGui:GetAttribute("CaravaneOpen") and input ~= Enum.PreferredInput.Touch
+	reticleGui.Enabled = not driving and not playerGui:GetAttribute("CaravaneOpen") and not playerGui:GetAttribute("WorkshopOptionsOpen")
+		and input ~= Enum.PreferredInput.Touch
 	ledger.Text = if day == 0 then "Atelier libre" else string.format("Jour %d · %d/%d clients · %d $", day, served, total, cash)
 	orderLine.Visible = phase ~= "free"
 	orderLine.Text = string.format("%s · %d $\n%s", customer, session:GetAttribute("OrderEstimate") or 0, session:GetAttribute("OrderJobs") or "")
 	action.TextColor3 = if partOfDay then mint else cream
 	local description = phases[phase] or phases.free
 	action.Text, hint.Text = description[1], description[2]
+	local saveStatus = session:GetAttribute("SaveState")
+	if phase == "free" and saveStatus == "loading" then
+		action.Text, hint.Text = "Chargement de l’atelier…", "Récupération de ta dernière journée."
+	end
+	saveNote.Visible = saveStatus == "unavailable" or saveStatus == "unsupported" or saveStatus == "conflict" or saveStatus == "retry"
+	saveNote.Text = if saveStatus == "retry" then "Sauvegarde en attente." elseif saveStatus == "conflict" then "Atelier sauvegardé dans une autre session."
+		else "Sauvegarde indisponible pour cette partie."
 	local drivingControls = if input == Enum.PreferredInput.Touch then "Commandes tactiles" elseif input == Enum.PreferredInput.Gamepad then
 		"Stick gauche conduire  ·  X valider  ·  B descendre" else "W/S accélérer et reculer  ·  A/D braquer  ·  E valider"
 	if driving then
@@ -250,5 +260,6 @@ local function refresh()
 end
 session.AttributeChanged:Connect(refresh)
 playerGui:GetAttributeChangedSignal("CaravaneOpen"):Connect(refresh)
+playerGui:GetAttributeChangedSignal("WorkshopOptionsOpen"):Connect(refresh)
 UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(refresh)
 refresh()

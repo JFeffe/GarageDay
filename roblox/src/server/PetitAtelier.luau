@@ -24,6 +24,12 @@ Layout.sideWindows = {
 	{ x = 17.82, openings = { {1.24, 3.67}, {5.27, 7.74}, {9.52, 11.88} } },
 }
 
+Layout.pedestrianDoors = {
+	{ name = "Porte de l’accueil", left = 1.5, right = 3.5, z = 12.82, outside = 1, double = true },
+	{ name = "Porte de l’atelier", left = 8.55, right = 9.82, z = 12.82, outside = 1 },
+	{ name = "Porte de sortie", left = 5.89, right = 7.52, z = 0, outside = -1 },
+}
+
 Layout.stations = {
 	phone = {2, 2.5}, officeChair = {2.5, 1.5}, bookcase = {3.5, 1.5},
 	waitingBench = {1.5, 5.5}, reception = {2, 9.5}, plant = {1.5, 11.5},

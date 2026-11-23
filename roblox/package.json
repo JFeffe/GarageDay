@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "assets": "node tools/pack-assets.mjs",
-    "build": "npm run assets && rojo build --output \"../build/roblox/Garage Day.rbxlx\""
+    "build": "npm run assets && rojo build --output \"../build/roblox/Garage Day.rbxlx\" && npm run build:studio-plugin",
+    "build:studio-plugin": "rojo build studio/plugin.project.json --output \"../build/roblox/Garage Day - Sauvegarde locale.rbxmx\""
   },
   "devDependencies": {
     "jpeg-js": "0.4.4",

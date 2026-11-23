@@ -8,6 +8,7 @@ local Drive = require(script.Parent.Drive)
 local Gear = require(script.Parent.GearWorld)
 local Props = require(script.Parent.GarageProps)
 local World = require(script.Parent.WorkshopWorld)
+local WorkshopSaves = require(script.Parent.WorkshopSaves)
 
 local random = Random.new()
 local state = Service.new(Repair.jobs, function(maximum) return random:NextInteger(1, maximum) end)
@@ -17,6 +18,8 @@ local world = World.build()
 local drive = Drive.new(world)
 local session = Instance.new("Folder")
 session.Name = "GarageDaySession"
+local saves = WorkshopSaves.new(state, session)
+local workshopOwner, workshopReady = nil, false
 
 local function remote(name)
 	local event = Instance.new("RemoteEvent")
@@ -28,6 +31,7 @@ end
 local driveControl = remote("DriveControl")
 local vendorControl = remote("VendorControl")
 local carryControl = remote("CarryControl")
+local optionsControl = remote("OptionsControl")
 local prompts, equipment = {}, {}
 local workPrompt, declinePrompt, promptedStep
 local finishStep
@@ -142,7 +146,7 @@ local function refresh()
 	for _, player in Players:GetPlayers() do updateEquipment(player) end
 
 	local focus = serviceTargets[phase]
-	prompts.open.Enabled = phase == "free" or phase == "vendor"
+	prompts.open.Enabled = workshopReady and (phase == "free" or phase == "vendor")
 	prompts.open.ActionText = if phase == "vendor" then "Ouvrir la prochaine journée" else "Ouvrir le service"
 	prompts.book.Enabled = not state.extraBooked and #state.orders < Service.maxAppointments
 		and (phase == "reception" or phase == "intake" or phase == "repair")
@@ -193,7 +197,7 @@ local function refresh()
 		end
 		if step.tool and not repair.tools[step.tool] then focus = Repair.tools[step.tool].target end
 	end
-	World.setObjective(world, focus)
+	World.setObjective(world, if workshopReady then focus else nil)
 	World.updateBoard(world, state)
 	if state.driver == 0 then
 		World.markParking(world, phase, false)
@@ -267,6 +271,13 @@ local function arrival()
 	refresh()
 end
 
+local function openMarket()
+	refresh()
+	World.moveVendor(world, true)
+	if Service.openMarket(state) then saves:checkpoint() end
+	refresh()
+end
+
 finishStep = function(player, step, declined)
 	if state.phase ~= "repair" or Repair.current(repair) ~= step then return end
 	local done = if declined then Repair.decline(repair) else Repair.act(repair, player.UserId, step.action)
@@ -283,6 +294,7 @@ finishStep = function(player, step, declined)
 		World.recordRepair(world, repair)
 		completedNote = repair.note
 		Service.finishRepair(state, repair.job, repair.billable, declined and step.quote == "window", repair.surcharge, repair.addBattery)
+		saves:checkpoint()
 		if state.phase == "repair" then
 			makeRepair()
 		else
@@ -298,11 +310,12 @@ end
 addPrompt("open", "Ouvrir le service", "Téléphone", "Phone", 0.45, function()
 	local night = state.phase == "vendor"
 	if not Service.open(state) then return end
+	saves:checkpoint()
 	if night then task.spawn(World.moveVendor, world, false) end
 	arrival()
 end)
 addPrompt("book", "Ajouter un rendez-vous", "Téléphone", "Phone", 0.40, function()
-	if Service.book(state) then refresh() end
+	if Service.book(state) then saves:checkpoint() refresh() end
 end)
 addPrompt("receive", "Accueillir le client", "Accueil", "Reception", 0.48, function()
 	if not Service.receive(state) then return end
@@ -317,23 +330,21 @@ addPrompt("drive", "Prendre le volant", "Véhicule du client", "Door", 0, functi
 end)
 addPrompt("pay", "Encaisser", "Caisse", "Checkout", 0.55, function()
 	if not Service.pay(state) then return end
+	saves:checkpoint()
 	refresh()
 	World.depart(world)
 	Service.departed(state)
 	if state.phase == "arrival" then
 		arrival()
 	else
-		refresh()
-		World.moveVendor(world, true)
-		Service.openMarket(state)
-		refresh()
+		openMarket()
 	end
 end)
 addPrompt("vendor", "Voir les offres", "La Caravane", "Vendor", 0, function(player)
 	if state.phase == "vendor" then vendorControl:FireClient(player, "open") end
 end)
 addPrompt("snack", "Offrir une collation", "Salle d’attente", "Snack", 0.3, function()
-	if Service.snack(state, workspace:GetServerTimeNow()) then refresh() end
+	if Service.snack(state, workspace:GetServerTimeNow()) then saves:checkpoint() refresh() end
 end)
 
 for key, spec in Repair.tools do
@@ -406,8 +417,12 @@ vendorControl.OnServerEvent:Connect(function(player, action, id)
 	else
 		return
 	end
-	if bought then refresh() end
+	if bought then saves:checkpoint() refresh() end
 	vendorControl:FireClient(player, "result", bought, message)
+end)
+
+optionsControl.OnServerEvent:Connect(function(player, sensitivity)
+	saves:changeSensitivity(player, sensitivity)
 end)
 
 local function goalPose()
@@ -436,7 +451,7 @@ driveControl.OnServerEvent:Connect(function(player, action, throttle, steer)
 	end
 end)
 
-local elapsed = 0
+local elapsed, doorElapsed = 0, 0
 RunService.Heartbeat:Connect(function(dt)
 	if state.driver ~= 0 then
 		drive:update(dt)
@@ -448,11 +463,16 @@ RunService.Heartbeat:Connect(function(dt)
 		session:SetAttribute("ParkingHint", hint)
 	end
 	if not Props.moveCart(world, dt) then refresh() end
+	doorElapsed += dt
+	if doorElapsed >= 0.09 then
+		World.updateDoors(world, Players:GetPlayers(), os.clock())
+		doorElapsed = 0
+	end
 	elapsed += dt
 	if elapsed < 0.27 then return end
 	local order = Service.current(state)
 	local now = workspace:GetServerTimeNow()
-	Service.passTime(state, elapsed, now)
+	if Service.passTime(state, elapsed, now) then saves:checkpoint() end
 	updatePatience(order)
 	if world.cart.owner then updateCartLoading() end
 	if not prompts.snack.Enabled and state.phase == "repair" and Service.owns(state, "vending")
@@ -470,6 +490,22 @@ end
 
 local spawnOwners = {}
 local function watchPlayer(player)
+	saves:watch(player)
+	if not workshopOwner then
+		workshopOwner = player
+		task.spawn(function()
+			saves:restore(workshopOwner)
+			workshopReady = true
+			if state.phase == "arrival" then
+				arrival()
+			elseif state.phase == "closing" then
+				openMarket()
+			else
+				if state.phase == "vendor" then World.restoreVendor(world) end
+				refresh()
+			end
+		end)
+	end
 	for _, spawn in world.spawns do
 		if not spawnOwners[spawn] then
 			spawnOwners[spawn] = player
@@ -488,9 +524,13 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	release(player)
 	equipment[player] = nil
+	task.spawn(function() saves:leaving(player) end)
+	for _, other in Players:GetPlayers() do if other ~= player then return end end
+	task.spawn(function() saves:drain(saves.workshop) end)
 end)
-for _, player in Players:GetPlayers() do watchPlayer(player) end
 
 refresh()
 session.Parent = ReplicatedStorage
+saves:bindToClose()
+for _, player in Players:GetPlayers() do watchPlayer(player) end
 print("Garage Day · Le Petit Atelier prêt")

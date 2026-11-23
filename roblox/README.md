@@ -19,11 +19,19 @@ Prépare la clé à choc, le bac de vidange, la valise de diagnostic, le manomè
 
 Les roues démontées peuvent être ramassées, posées, transportées à l’établi ou déposées au recyclage. Le chariot transporte jusqu’à quatre roues neuves. Les bacs séparent l’huile usée, les pneus, les métaux et le recyclage courant. À deux, les rôles se partagent entre conduite, outillage et pièces. Le poste **OBJETS RÉCUPÉRÉS** permet de retrouver les pièces déposées quand un joueur quitte.
 
-Après le dernier client, la caravane propose jusqu’à trois articles sur le parvis. La caisse sert à acheter des améliorations permanentes ou des services pour le lendemain. Le téléphone ouvre la journée suivante. Les recettes, les achats et la progression sont conservés pendant la partie en cours.
+Après le dernier client, la caravane propose jusqu’à trois articles sur le parvis. La caisse sert à acheter des améliorations permanentes ou des services pour le lendemain. Le téléphone ouvre la journée suivante.
+
+## Sauvegarde automatique
+
+Le jeu conserve le jour, le planning, les factures encaissées, la caisse et les achats à la caravane. À la reprise, le premier client dont la facture est encore ouverte revient à l’accueil. Si le service était terminé, la caravane reste disponible avec ses offres du soir. En coop, la progression appartient à l’atelier du premier joueur arrivé. Chaque joueur conserve son propre réglage de souris.
+
+Dans le fichier local de Studio, la sauvegarde passe par le plugin Garage Day - Sauvegarde locale. Sur une autre machine, place le fichier `Garage Day - Sauvegarde locale.rbxmx` généré par la compilation dans le dossier des plugins locaux de Studio, puis relance Studio. Une expérience hébergée utilise les Data Stores Roblox. Les essais dans une expérience publiée depuis Studio utilisent un espace de stockage dédié. [Documentation des Data Stores Roblox](https://create.roblox.com/docs/cloud-services/data-stores)
 
 ## Commandes
 
 À pied, les gants et les objets tenus sont visibles en première personne. Utilise **E** au clavier, **X** à la manette ou l’invite tactile. **Q**, **B** ou **Poser** dépose une pièce ou lâche le chariot. Les invites du chariot indiquent la commande pour charger ou prendre une roue. Les devis ont une commande distincte pour reporter l’intervention.
+
+**O** ouvre les options. Le curseur règle la sensibilité de la souris de **20 % à 130 %**, avec une valeur par défaut de **55 %**. Les trois portes piétonnes s’ouvrent à l’approche et se referment une fois le passage dégagé.
 
 Au volant, la caméra passe derrière la berline. Utilise **WASD** ou les flèches, le stick gauche ou les commandes tactiles pour conduire. Relâche l’accélérateur sur la place indiquée, puis valide avec **E**, **X** ou le bouton à l’écran. Pour descendre en cours de trajet, arrête-toi et utilise **Q**, **B** ou **Descendre**.
 
@@ -49,4 +57,4 @@ Les crédits et les licences des modèles sont dans le [README de Garage Day](..
 
 ## Vérifier les règles de service
 
-Depuis la racine du dépôt, lance `luau roblox/tests/repair.luau` avec la [CLI Luau](https://github.com/luau-lang/luau/releases).
+Depuis la racine du dépôt, lance `luau roblox/tests/repair.luau` et `luau roblox/tests/save.luau` avec la CLI Luau. [Télécharger la CLI Luau](https://github.com/luau-lang/luau/releases)

@@ -196,7 +196,7 @@ local function facade(world, part, cloneMesh)
 	end
 	for _, side in { {0.13, -1}, {12.96, 1} } do
 		local z, direction = table.unpack(side)
-		for _, x in { 0.0, 5.05, 8.96, 14.05, 17.96 } do
+		for _, x in { 0.0, 5.05, if direction > 0 then 8.44 else 8.96, 14.05, 17.96 } do
 			part(room, "Pilastre de façade", Vector3.new(0.31, 7.95, 0.18), at(x, z + direction * 0.07, 4.06), tile,
 				false, Enum.Material.Brick)
 		end
@@ -212,7 +212,7 @@ local function facade(world, part, cloneMesh)
 		cloneMesh(world.meshes.Plant, room, CFrame.new(at(x, 13.67, 0.38)))
 	end
 	for _, z in { -0.42, 13.33 } do
-		for _, x in { 9.59, 13.43 } do
+		for _, x in { if z > 0 then 9.81 else 9.59, 13.43 } do
 			part(room, "Borne de protection", Vector3.new(0.31, 1.65, 0.31), at(x, z, 0.83), brass, false, Enum.Material.Metal)
 			part(room, "Bande de borne", Vector3.new(0.326, 0.24, 0.326), at(x, z, 1.18), ink)
 		end

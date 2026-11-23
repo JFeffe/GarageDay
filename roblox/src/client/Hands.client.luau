@@ -137,6 +137,7 @@ RunService:BindToRenderStep("GarageDayMains", Enum.RenderPriority.Camera.Value +
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local driving = session:GetAttribute("Driver") == player.UserId
 	local enabled = humanoid ~= nil and humanoid.Health > 0 and not driving and not playerGui:GetAttribute("CaravaneOpen")
+		and not playerGui:GetAttribute("WorkshopOptionsOpen")
 	screen.Enabled = enabled
 	if not enabled then showEquipment(nil, nil) return end
 

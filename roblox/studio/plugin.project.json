@@ -1,0 +1,12 @@
+{
+  "name": "Garage Day - Sauvegarde locale",
+  "tree": {
+    "$className": "Folder",
+    "LocalSave": {
+      "$path": "LocalSave.server.luau",
+      "$properties": {
+        "RunContext": "Plugin"
+      }
+    }
+  }
+}
