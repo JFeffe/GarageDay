@@ -323,10 +323,14 @@ local jobs: { [string]: JobSpec } = {
 
 Repair.jobs = table.freeze(jobs)
 
-function Repair.new(job: string, faults: Faults?, toolOwners: { [string]: number }?): State
-	return { job = job, steps = jobs[job].steps(faults or {}), index = 1, tools = toolOwners or {}, carried = {}, placements = {},
+local function newState(job: string, steps: { Step }, toolOwners: { [string]: number }?): State
+	return { job = job, steps = steps, index = 1, tools = toolOwners or {}, carried = {}, placements = {},
 		moving = false, raised = false, hoodOpen = false, wheels = {}, components = {}, note = "", pressure = nil,
 		billable = true, addBattery = false, surcharge = 0, done = {} }
+end
+
+function Repair.new(job: string, faults: Faults?, toolOwners: { [string]: number }?): State
+	return newState(job, jobs[job].steps(faults or {}), toolOwners)
 end
 
 local controls = { raise, lower, openHood, closeHood }
@@ -361,7 +365,8 @@ function Repair.addJob(state: State, job: string, faults: Faults?)
 		action.output = wheelCargo(action.output, job, wheel)
 		if engineTargets[base.target] then
 			action.raised, action.hoodOpen = false, true
-		elseif undersideTargets[base.target] or (wheelNames[base.target] and job ~= "pressure") then
+		elseif undersideTargets[base.target] or (wheelNames[base.target] and job ~= "pressure"
+			and base.action ~= "loosen" and base.action ~= "tighten") then
 			action.raised = true
 		elseif standingTargets[base.target] then
 			action.raised = false
@@ -398,8 +403,7 @@ function Repair.addJob(state: State, job: string, faults: Faults?)
 end
 
 function Repair.forOrder(jobIds: { string }, faults: { [string]: Faults }, toolOwners: { [string]: number }): State
-	local state = Repair.new(jobIds[1], nil, toolOwners)
-	state.steps = {}
+	local state = newState(jobIds[1] or "", {}, toolOwners)
 	state.order = { jobs = {}, looseWheels = {}, oilDrained = false }
 	for _, job in jobIds do Repair.addJob(state, job, faults[job]) end
 	return state
@@ -426,13 +430,23 @@ local function inPosition(state: State, step: Step): boolean
 	return (step.raised == nil or step.raised == state.raised) and (step.hoodOpen == nil or step.hoodOpen == state.hoodOpen)
 end
 
+function Repair.liftControl(state: State): Step?
+	if state.moving then return nil end
+	if not state.raised then return raise end
+	for _, status in state.wheels do
+		if status == "removed" then return nil end
+	end
+	return lower
+end
+
+function Repair.hoodControl(state: State): Step?
+	if state.moving then return nil end
+	return if state.hoodOpen then closeHood else openHood
+end
+
 local function canMove(state: State, step: Step): boolean
-	local order = assert(state.order)
-	if step == lower then return state.raised and next(order.looseWheels) == nil end
-	if step == closeHood then return state.hoodOpen end
-	if state.index > #state.steps then return false end
-	if step == raise then return not state.raised and not state.hoodOpen end
-	return step == openHood and not state.hoodOpen and not state.raised
+	if step == raise or step == lower then return Repair.liftControl(state) == step end
+	return Repair.hoodControl(state) == step
 end
 
 local function ready(state: State, step: Step, index: number): boolean
@@ -471,7 +485,7 @@ function Repair.current(state: State): Step?
 		for _, step in order.jobs[state.job] or {} do
 			if state.done[step] or not dependenciesDone(state, step) then continue end
 			if not inPosition(state, step) then
-				local control = if step.raised == true then (if state.hoodOpen then closeHood else raise)
+				local control = if step.raised == true then raise
 					elseif state.raised then lower elseif step.hoodOpen == true then openHood else closeHood
 				if canMove(state, control) then return control end
 			elseif ready(state, step, 0) then
@@ -575,11 +589,23 @@ end
 
 function Repair.act(state: State, playerId: number, action: string | Step, supply: State?): boolean
 	if state.moving or playerId == 0 then return false end
-	local current = if type(action) == "string" then Repair.current(state) else action
-	if not current then return false end
+	local current: Step?
 	if type(action) == "string" then
-		if current.action ~= action then return false end
-	elseif state.order and current.motion then
+		if state.order then
+			for _, control in controls do
+				if control.action == action then
+					current = control
+					break
+				end
+			end
+		end
+		current = current or Repair.current(state)
+		if not current or current.action ~= action then return false end
+	else
+		current = action
+	end
+	if not current then return false end
+	if state.order and current.motion then
 		if not canMove(state, current) then return false end
 	else
 		local index = table.find(state.steps, current)

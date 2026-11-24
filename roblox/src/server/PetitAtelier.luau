@@ -50,6 +50,7 @@ Layout.stations = {
 }
 
 Layout.arrivals = { {9.8, 24.9, 3.4, 5.9}, {13.8, 24.9, 3.4, 5.9}, {5.8, 24.9, 3.4, 5.9} }
+Layout.deposits = { {15.8, 7.62, math.pi / 2} }
 Layout.bays = { {
 	x = 11.5, z = 6.5, lever = {14.5, 10}, intake = 12.93,
 	dock = {9.9, 4.11, 3.2, 4.78}, parking = {9.8, -10.45, 3.4, 5.9}, arrival = Layout.arrivals[1],

@@ -587,14 +587,29 @@ function World.sound(anchor, action)
 	end
 end
 
+function World.liftOccupied(world)
+	if not world.vehicle.Parent then return false end
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { world.vehicle }
+	params.RespectCanCollide = true
+	params.MaxParts = 1
+	local deck = world.liftBase + Vector3.yAxis * 1.7
+	return #workspace:GetPartBoundsInBox(deck, Vector3.new(8.4, 4.6, 7.6), params) > 0
+end
+
 function World.animate(world, motion, liftTime)
 	local anchor = world.targets[if motion == "raise" or motion == "lower" then "Lever" else "Hood"]
 	if motion == "raise" or motion == "lower" then
 		local motor = sound(anchor, "action_footsteps_plastic.mp3", 1.65, 0.16)
 		local goal = world.liftBase + Vector3.yAxis * (if motion == "raise" then 2.85 else 0)
-		tweenModel(world.carriage, goal, liftTime, function(pose)
-			world.vehicle:PivotTo(world.dockPose + Vector3.yAxis * (pose.Y - world.liftBase.Y))
-		end, Enum.EasingStyle.Sine)
+		local follow
+		if world.onLift then
+			follow = function(pose)
+				world.vehicle:PivotTo(world.dockPose + Vector3.yAxis * (pose.Y - world.liftBase.Y))
+			end
+		end
+		tweenModel(world.carriage, goal, liftTime, follow, Enum.EasingStyle.Sine)
 		motor:Destroy()
 	else
 		local angle = if motion == "openHood" then 1.12 else 0
@@ -749,8 +764,8 @@ function World.markParking(world, phase, ready)
 	end
 end
 
-function World.makeEquipment(world, key, title)
-	return Gear.equipment(world, key, title)
+function World.makeEquipment(world, key, character)
+	return Gear.equipment(world, key, character)
 end
 
 function World.setEvening(world, evening)

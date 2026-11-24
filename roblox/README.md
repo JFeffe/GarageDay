@@ -25,11 +25,15 @@ Prépare la clé à choc, le bac de vidange, la valise de diagnostic, le manomè
 
 Tu peux avancer sur plusieurs interventions du même véhicule et préparer les outils et pièces à l’avance. Les invites apparaissent dès que leurs conditions sont réunies. **F** près de la portière ou **Y** à la manette change l’intervention mise en avant dans le suivi.
 
+Le levier jaune commande le pont à vide ou avec un véhicule en place. Tu peux l’utiliser à tout moment, y compris avec un outil en main. Remonte les roues déposées avant d’abaisser la voiture et abaisse le pont avant de prendre le volant.
+
 Pour les pneus, chaque roue a ses propres gestes. Tu peux desserrer et déposer les quatre roues avant d’en remonter une, puis choisir l’ordre de remontage et de recyclage. Une roue desserrée tombe au sol même si tu tiens déjà un outil ou une pièce. Libère tes mains pour la ramasser et la transporter.
 
 Pour une vidange, prends le bac vide au poste **VIDANGE**, lève le pont et utilise le bac sous le moteur. Ramasse ensuite le bac plein et vide-le dans le fût **HUILE USÉE**. Tu peux le poser avec **Q** et le ramasser plus tard. Termine la vidange en abaissant le pont, en versant l’huile neuve sous le capot et en recyclant le bidon vide.
 
 Les pièces lourdes se portent à deux mains et ralentissent la marche. Le chariot transporte jusqu’à quatre roues neuves. Les bacs séparent l’huile usée, les pneus, les métaux et le recyclage courant. Le poste **OBJETS RÉCUPÉRÉS** permet de retrouver certaines pièces quand un joueur quitte.
+
+Les comptoirs **DÉPÔT** sont disponibles dès le début. Vise une place libre et choisis **Poser l’objet** pour y laisser ce que tu transportes, de la clé à choc jusqu’au bac d’huile plein. Libère tes mains et utilise **Ramasser** pour le reprendre. La desserte de la caravane ajoute deux places.
 
 Après le dernier client, la caravane propose jusqu’à trois articles sur le parvis. La caisse sert à acheter des améliorations permanentes ou des services pour le lendemain. Le téléphone ouvre la journée suivante, puis affiche le bilan à la fin du jour 10.
 

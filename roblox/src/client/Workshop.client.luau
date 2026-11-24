@@ -346,6 +346,10 @@ local function refresh()
 		hint.Text = value("ParkingHint", "")
 	elseif value("Driver", 0) ~= 0 then
 		hint.Text = "Ton collègue est au volant. Laisse le passage libre."
+	elseif (phase == "intake" or phase == "outbound") and value("DriveBlocked") then
+		hint.Text = if value("Moving") then "Attends la fin du mouvement."
+			elseif value("DriveBlocked") == "Hood" then "Referme le capot avant de prendre le volant."
+			else "Abaisse le pont au levier jaune de cette baie."
 	elseif phase == "repair" and job then
 		action.Text = value("ActionTitle", job.name)
 		local toolKey, cargoKey = value("NeedsTool"), value("NeedsCargo")
@@ -362,7 +366,7 @@ local function refresh()
 		elseif hand and (value("NeedsEmptyHands") or (toolKey and toolOwner ~= player.UserId) or (cargo and owner ~= player.UserId)) then
 			hint.Text = "Pose d’abord ce que tu tiens."
 		elseif toolKey and toolOwner ~= player.UserId then
-			hint.Text = if toolOwner then "Ton collègue a l’outil." elseif value("ToolOnFloor") then "Utilise l’invite Ramasser sur l’outil déposé."
+			hint.Text = if toolOwner then "Ton collègue a l’outil." elseif value("ToolDropped") then "Utilise l’invite Ramasser sur l’outil déposé."
 				else "Prends « " .. Repair.tools[toolKey].name .. " » au poste d’outillage."
 		elseif cargo and owner ~= player.UserId then
 			local source = value("CargoSource")
@@ -370,7 +374,7 @@ local function refresh()
 				elseif source == "Ground" then "Ramasse la pièce là où tu l’as posée."
 				elseif source == "Workpiece" then "Ramasse la pièce que tu viens de retirer."
 				elseif source == "Recovery" then "La pièce est au point OBJETS RÉCUPÉRÉS."
-				elseif source == "Counter1" or source == "Counter2" then "Reprends la pièce sur la desserte."
+				elseif source == "Counter" then "Reprends la pièce au comptoir de dépôt."
 				else cargo.hint
 		elseif actionKey == "adjustPressure" or actionKey == "verifyPressure" then
 			hint.Text = string.format("%d psi mesurés · cible 34 psi.", value("Pressure", 34))

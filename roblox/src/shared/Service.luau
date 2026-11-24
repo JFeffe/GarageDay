@@ -30,7 +30,7 @@ local lateInterval = 10
 local names = { "Camille", "Noah", "Léa", "Sacha", "Maël", "Zia", "Alex", "Inès", "Charlie", "Sam", "Jules", "Morgan" }
 local offers: { [string]: Offer } = {
 	lift = { name = "Élévateur rapide", price = 60, description = "Les montées et descentes du pont prennent 38 % moins de temps." },
-	counter = { name = "Desserte double", price = 75, description = "Installe deux surfaces où poser et reprendre des pièces." },
+	counter = { name = "Desserte double", price = 75, description = "Ajoute deux places pour déposer des outils ou des pièces." },
 	compressor = { name = "Compresseur pro", price = 50, description = "Divise par deux le temps de réglage de la pression." },
 	impact = { name = "Clé à choc pro", price = 50, description = "Desserre et resserre les roues deux fois plus vite." },
 	light_cart = { name = "Chariot léger", price = 65, description = "Pousse le chariot à ta vitesse normale." },

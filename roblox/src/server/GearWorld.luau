@@ -234,8 +234,6 @@ function Gear.build(world, part, cloneMesh, target, sign, model)
 	slot(world, "Bench", at("bench", 0, 0, 3.23), target, world.furniture.bench.model)
 	slot(world, "WheelStand", at("wheelStand", 0, 0, 1.04), target, stand)
 	slot(world, "Recovery", at("recovery", 0, 0, 0.38), target)
-	slot(world, "Counter1", at("doubleCounter", 0, 0.43, 2.64), target)
-	slot(world, "Counter2", at("doubleCounter", 0, -0.42, 2.64), target)
 	part(stand, "Support de roue", Vector3.new(2.23, 0.23, 2.27), world.slots.WheelStand.Position - Vector3.yAxis * 0.93, dark)
 	sign(world.targets.WheelStand, "SUPPORT DE ROUE", 1.15, 23)
 	sign(world.targets.Bench, "ÉTABLI", 1.55, 24)
@@ -308,13 +306,38 @@ function Gear.syncStocks(world, owners)
 	end
 end
 
-function Gear.dropTool(world, key, pose, from)
-	local visual = Gear.place(world, key, world.room, pose)
+local function counterPose(world, key, anchor)
+	local asset = Repair.assetKey(key)
+	local rotation = CFrame.identity
+	if Repair.isWheel(key) then rotation = zUp
+	elseif Repair.tools[key] then rotation = CFrame.Angles(math.pi / 2, 0, 0)
+	elseif asset == "newMuffler" or asset == "oldMuffler" then rotation = CFrame.Angles(0, math.pi / 2, 0) end
+	local bounds, size = world.gearTemplates[asset]:GetBoundingBox()
+	local box = rotation * bounds
+	local halfHeight = (math.abs(box.RightVector.Y) * size.X + math.abs(box.UpVector.Y) * size.Y
+		+ math.abs(box.LookVector.Y) * size.Z) / 2
+	return anchor.WorldCFrame * CFrame.new(0, halfHeight - box.Y - 0.4, 0) * rotation
+end
+
+function Gear.dropTool(world, key, pose, from, location)
+	local counter = world.depositSlots[location]
+	local parent = if counter then counter.Parent.Parent else world.room
+	if counter then pose = counterPose(world, key, counter) end
+	local visual = Gear.place(world, key, parent, pose)
 	if from then animate(visual, from, pose, 0.22, Enum.EasingStyle.Quad) end
-	local anchor = world.gearTarget(visual, "Outil déposé", pose.Position + Vector3.yAxis * 0.43)
-	-- Keep the pickup stable during the final settling motion.
-	anchor.Parent.Parent = world.room
-	world.toolDrops[key] = { visual = visual, anchor = anchor }
+	local point = if counter then counter.WorldPosition + Vector3.yAxis * 0.24 else pose.Position + Vector3.yAxis * 0.43
+	local anchor = world.gearTarget(parent, "Outil déposé", point)
+	world.toolDrops[key] = { visual = visual, anchor = anchor, location = location }
+end
+
+function Gear.recoverTool(world, key)
+	local recovery = world.targets.Recovery.WorldPosition
+	local offset = 0
+	for _, drop in world.toolDrops do
+		if drop.location == "Recovery" then offset = math.max(offset, drop.anchor.WorldPosition.X - recovery.X + 0.72) end
+	end
+	local height = world.gearTemplates[key]:GetExtentsSize().Y / 2
+	Gear.dropTool(world, key, CFrame.new(recovery.X + offset, 0.10 + height, recovery.Z), nil, "Recovery")
 end
 
 function Gear.clearTool(world, key, prompt)
@@ -339,33 +362,39 @@ function Gear.sync(world, repair)
 	end
 	for key, location in repair.placements do
 		if not world.placed[key] then
+			local counter = world.root.depositSlots[location]
 			local shared = world.root.slots[location] and world.targets[location]
 			local pose = if location == "Ground" or location == "Workpiece" then world.drops[key] else world.slots[location]
 			if shared then pose = shared.WorldCFrame - Vector3.yAxis * 0.4 end
 			pose = pose or world.targets.Recovery.WorldCFrame - Vector3.yAxis * 0.4
 			local wheel = Repair.isWheel(key)
-			if wheel and location ~= "WheelStand" then pose *= zUp end
-			local visual = Gear.place(world, key, world.room, pose)
+			if counter then pose = counterPose(world, key, counter)
+			elseif wheel and location ~= "WheelStand" then pose *= zUp end
+			local parent = if counter then counter.Parent.Parent else world.room
+			local visual = Gear.place(world, key, parent, pose)
 			local origin = world.pieceMotion[key]
 			if origin then
 				animate(visual, origin, pose, if wheel then 0.38 else 0.24, Enum.EasingStyle.Quad)
 				world.pieceMotion[key] = nil
 			end
-			local offset = if location == "Bench" then Vector3.new(0, 0.50, 0.9) else Vector3.yAxis * 0.6
-			local anchor = world.gearTarget(world.room, "Objet déposé · " .. key, pose.Position + offset)
+			local point = if counter then counter.WorldPosition + Vector3.yAxis * 0.24
+				elseif location == "Bench" then pose.Position + Vector3.new(0, 0.50, 0.9) else pose.Position + Vector3.yAxis * 0.6
+			local anchor = world.gearTarget(parent, "Objet déposé · " .. key, point)
 			world.placed[key] = { location = location, visual = visual, anchor = anchor }
 		end
 	end
 end
 
-function Gear.equipment(world, key, title)
-	local tool = Instance.new("Tool")
-	tool.Name = title
-	tool.CanBeDropped = false
+function Gear.equipment(world, key, character)
+	local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+	if not hand then return nil end
+	local item = frame("GarageHeldItem")
 	local asset = Repair.assetKey(key)
-	tool:SetAttribute("GearKey", asset)
-	tool:SetAttribute("TwoHanded", Repair.cargo[key] ~= nil and Repair.cargo[key].large == true)
-	tool.Grip = CFrame.new(0, 0.09, -0.16) * CFrame.Angles(0, math.pi / 2, 0)
+	item:SetAttribute("GearKey", asset)
+	item:SetAttribute("TwoHanded", Repair.cargo[key] ~= nil and Repair.cargo[key].large == true)
+	local grip = CFrame.new(0, 0.09, -0.16) * CFrame.Angles(0, math.pi / 2, 0)
+	local attachment = hand:FindFirstChild("RightGripAttachment")
+	local wrist = if attachment then attachment.CFrame else CFrame.new(0, -hand.Size.Y / 2, 0)
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
@@ -375,11 +404,16 @@ function Gear.equipment(world, key, title)
 	handle.CanTouch = false
 	handle.CanQuery = false
 	handle.Massless = true
-	handle.Parent = tool
+	handle.CFrame = hand.CFrame * wrist * grip:Inverse()
+	handle.Parent = item
+	local connection = Instance.new("Weld")
+	connection.Part0, connection.Part1 = hand, handle
+	connection.C0, connection.C1 = wrist, grip
+	connection.Parent = handle
 
 	local visual = world.gearTemplates[asset]:Clone()
 	visual.Name = "HeldGeometry"
-	visual.Parent = tool
+	visual.Parent = item
 	for _, piece in visual:GetChildren() do
 		piece:SetAttribute("GripPose", piece.CFrame)
 		piece.CFrame = handle.CFrame * piece.CFrame
@@ -390,7 +424,8 @@ function Gear.equipment(world, key, title)
 		weld.Part1 = piece
 		weld.Parent = piece
 	end
-	return tool
+	item.Parent = character
+	return item
 end
 
 return Gear

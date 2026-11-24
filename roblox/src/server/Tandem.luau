@@ -47,6 +47,7 @@ Layout.stations = {
 	vending = {5.75, 7.25}, magazines = {1.24, 7.15},
 }
 Layout.arrivals = { {9.8, 24.9, 3.4, 5.9}, {5.8, 24.9, 3.4, 5.9} }
+Layout.deposits = { {9.1, 8.15}, {26, 9.30} }
 Layout.bays = {}
 for index, x in { 15.5, 21.5 } do
 	Layout.bays[index] = {

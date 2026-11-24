@@ -149,8 +149,8 @@ RunService:BindToRenderStep("GarageDayMains", Enum.RenderPriority.Camera.Value +
 	screen.Enabled = enabled
 	if not enabled then showEquipment(nil, nil) return end
 
-	local tool = character:FindFirstChildOfClass("Tool")
-	local visual = tool and tool:FindFirstChild("HeldGeometry")
+	local carried = character:FindFirstChild("GarageHeldItem")
+	local visual = carried and carried:FindFirstChild("HeldGeometry")
 	showEquipment(visual, if visual then #visual:GetChildren() else nil)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local speed = if root then (root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude else 0

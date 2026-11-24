@@ -64,21 +64,44 @@ local function makeVendor(world, part, model, cloneMesh, target, sign)
 	sign(world.targets.Vendor, "LA CARAVANE", 1.89, 58)
 end
 
+local function makeDeposit(world, part, model, target, sign, id, title, position, turn, size, firstSlot)
+	local home = CFrame.new(position)
+	local counter = model(world.room, title, home)
+	local width, length, height = size.X, size.Z, 2.24
+	part(counter, "Plateau du comptoir", Vector3.new(width, 0.2, length), position + Vector3.yAxis * (height - 0.1), teal, true)
+	part(counter, "Traverse du comptoir", Vector3.new(width - 0.3, 0.21, length - 0.27), position + Vector3.yAxis * 0.66, steel)
+	for _, x in { -1, 1 } do
+		for _, z in { -1, 1 } do
+			part(counter, "Pied", Vector3.new(0.21, height - 0.16, 0.21),
+				position + Vector3.new(x * (width / 2 - 0.19), (height - 0.16) / 2, z * (length / 2 - 0.22)), steel)
+		end
+	end
+	for index = 0, 1 do
+		local name = "Counter" .. (firstSlot + index)
+		local spot = position + Vector3.new(0, height, (index - 0.5) * length / 2)
+		part(counter, "Surface de dépôt", Vector3.new(width - 0.24, 0.045, length / 2 - 0.17),
+			spot + Vector3.yAxis * 0.02, Color3.fromRGB(87, 120, 116))
+		for _, edge in { -1, 1 } do
+			part(counter, "Repère du plateau", Vector3.new(0.07, 0.045, length / 2 - 0.30),
+				spot + Vector3.new(edge * (width / 2 - 0.17), 0.032, 0), gold)
+		end
+		local anchor = target(counter, name, spot + Vector3.yAxis * 0.45)
+		world.depositSlots[name] = anchor
+		world.targets[name] = anchor
+	end
+	sign(target(counter, "Dépôt", position + Vector3.yAxis * 4.1), "DÉPÔT", 0, 26)
+	counter:PivotTo(home * CFrame.Angles(0, turn or 0, 0))
+	Furniture.add(world, id, counter, size, target)
+	return counter
+end
+
 local function makeUpgrades(world, part, model, target, sign)
 	local function at(id)
 		return world.layout.at(table.unpack(world.layout.stations[id]))
 	end
-	local position = at("doubleCounter")
-	local counters = model(nil, "Desserte double", CFrame.new(position))
-	for _, name in { "Counter1", "Counter2" } do
-		local top = world.slots[name].Position
-		world.targets[name].Parent.Parent = counters
-		part(counters, "Plateau", Vector3.new(1.9, 0.19, 2.14), top - Vector3.yAxis * 0.50, teal, true)
-		for _, corner in { Vector3.new(-0.73, 0, -0.81), Vector3.new(0.73, 0, 0.81) } do
-			part(counters, "Pied", Vector3.new(0.14, 2.01, 0.15), top + corner - Vector3.yAxis * 1.58, steel)
-		end
-	end
-	Furniture.add(world, "doubleCounter", counters, Vector3.new(2.05, 2.64, 4.95), target)
+	local counters = makeDeposit(world, part, model, target, sign, "doubleCounter", "Desserte double",
+		at("doubleCounter"), 0, Vector3.new(2.05, 2.64, 4.95), 1)
+	counters.Parent = nil
 	local vendingPoint = at("vending")
 	local vending = model(nil, "Distributrice", CFrame.new(vendingPoint))
 	part(vending, "Distributrice", Vector3.new(2.4, 5.15, 1.60), vendingPoint + Vector3.yAxis * 2.58, teal, true)
@@ -115,6 +138,11 @@ end
 function Props.build(world, part, model, cloneMesh, target, sign)
 	makeCart(world, part, model, cloneMesh, target, sign)
 	makeVendor(world, part, model, cloneMesh, target, sign)
+	world.depositSlots = {}
+	for index, point in world.layout.deposits do
+		makeDeposit(world, part, model, target, sign, "deposit" .. index, "Comptoir de dépôt",
+			world.layout.at(point[1], point[2]), point[3], Vector3.new(2.9, 2.64, 6.26), 2 * index + 1)
+	end
 	makeUpgrades(world, part, model, target, sign)
 end
 
