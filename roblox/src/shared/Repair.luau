@@ -10,17 +10,18 @@ export type Step = {
 	tool: string?, cargo: string?, output: string?, leaveAt: string?, storeAt: string?, motion: Motion?,
 	wheel: string?, wheelState: ("removed" | "installed" | "new")?, component: string?, componentState: ("removed" | "new")?,
 	note: string?, reading: number?, quote: ("battery" | "window")?, rate: string?,
-	after: { Step }?,
+	after: { Step }?, job: string?, raised: boolean?, hoodOpen: boolean?,
 }
 type ToolSpec = { name: string, target: string }
 type CargoSpec = { name: string, target: string?, hint: string, large: boolean?, asset: string? }
 type JobSpec = { name: string, amount: number, unlock: number, steps: (Faults) -> { Step } }
+type WorkOrder = { jobs: { [string]: { Step } }, looseWheels: { [string]: string }, oilDrained: boolean }
 export type State = {
 	job: string, steps: { Step }, index: number, tools: { [string]: number }, carried: { [string]: number },
 	placements: { [string]: string }, moving: boolean, raised: boolean, hoodOpen: boolean,
 	wheels: { [string]: string }, components: { [string]: string },
 	note: string, pressure: number?, billable: boolean, addBattery: boolean, surcharge: number,
-	done: { [Step]: boolean }, motionStep: Step?,
+	done: { [Step]: boolean }, motionStep: Step?, order: WorkOrder?,
 }
 
 local Repair = {}
@@ -38,7 +39,7 @@ local cargo: { [string]: CargoSpec } = {
 	pads = { name = "Plaquettes", target = "Pads", hint = "Prends des plaquettes au rayon CHÂSSIS." },
 	oldPads = { name = "Plaquettes usées", hint = "Amène les plaquettes démontées au bac à métaux." },
 	pan = { name = "Bac de vidange", target = "OilPan", hint = "Prends le bac au poste VIDANGE.", large = true },
-	usedOil = { name = "Bac d’huile usée", hint = "Ramasse le bac sous le moteur.", large = true },
+	usedOil = { name = "Bac d’huile usée", hint = "Ramasse le bac plein devant le moteur, puis apporte-le au fût HUILE USÉE.", large = true },
 	freshOil = { name = "Huile neuve", target = "OilStock", hint = "Prends un bidon au poste VIDANGE." },
 	emptyBottle = { name = "Bidon d’huile vide", hint = "Ramasse le bidon vide." },
 	coolant = { name = "Liquide de refroidissement", target = "CoolantStock", hint = "Prends un bidon au rayon FLUIDES." },
@@ -80,8 +81,22 @@ for _, wheel in allWheels do
 		hint = "Ramasse la roue déposée et amène-la au recyclage.",
 		large = true, asset = "usedTire",
 	}
+	local front = wheel:sub(1, 5) == "Front"
+	if front then
+		local pads = table.clone(cargo.oldPads)
+		pads.asset = "oldPads"
+		cargo["oldPads_" .. wheel] = pads
+	end
+	for _, job in (if front then { "brakes", "puncture", "bearing" } else { "puncture", "bearing" }) do
+		local serviceWheel = table.clone(cargo.serviceWheel)
+		serviceWheel.name ..= " · " .. wheelNames[wheel]
+		serviceWheel.asset = "serviceWheel"
+		cargo["serviceWheel_" .. job .. "_" .. wheel] = serviceWheel
+	end
 end
 Repair.cargo = table.freeze(cargo)
+
+Repair.disposal = table.freeze({ WasteOil = true, Recycling = true, Scrap = true, TireBin = true } :: { [string]: boolean })
 
 function Repair.assetKey(key: string): string
 	local spec = cargo[key]
@@ -314,14 +329,124 @@ function Repair.new(job: string, faults: Faults?, toolOwners: { [string]: number
 		billable = true, addBattery = false, surcharge = 0, done = {} }
 end
 
+local controls = { raise, lower, openHood, closeHood }
+local engineTargets: { [string]: boolean } = { OilCap = true, Radiator = true, BatteryTray = true, DiagnosticPort = true, Belt = true }
+local undersideTargets: { [string]: boolean } = { Drain = true, Exhaust = true, DamperLeft = true, DamperRight = true }
+local standingTargets: { [string]: boolean } = { Door = true, Window = true, Wipers = true, FrontLamp = true, RearLamp = true }
+
+local function wheelCargo(key: string?, job: string, wheel: string?): string?
+	if key == "serviceWheel" then return "serviceWheel_" .. job .. "_" .. assert(wheel) end
+	if key == "oldPads" then return "oldPads_" .. assert(wheel) end
+	return key
+end
+
+function Repair.addJob(state: State, job: string, faults: Faults?)
+	local order = assert(state.order)
+	if order.jobs[job] then return end
+	local original = jobs[job].steps(faults or {})
+	local work: { Step } = {}
+	local copies: { [Step]: Step } = {}
+	local sources: { [Step]: { Step } } = {}
+	local wheel: string?
+	local drain: Step?
+	for index, base in original do
+		local previous = original[index - 1]
+		sources[base] = base.after or (if previous then { previous } else {})
+		-- Position the shared lift and hood as needed. A wheel can stay beside the car during brake or bearing work.
+		if base.motion or base.storeAt == "WheelStand" then continue end
+		if base.action == "loosen" then wheel = base.target end
+		local action: Step = table.clone(base)
+		action.job = job
+		action.cargo = wheelCargo(action.cargo, job, wheel)
+		action.output = wheelCargo(action.output, job, wheel)
+		if engineTargets[base.target] then
+			action.raised, action.hoodOpen = false, true
+		elseif undersideTargets[base.target] or (wheelNames[base.target] and job ~= "pressure") then
+			action.raised = true
+		elseif standingTargets[base.target] then
+			action.raised = false
+		end
+		if base.action == "ignition" then action.hoodOpen = false end
+		if base.action:sub(1, 7) == "remove_" and not base.leaveAt then action.leaveAt = "Workpiece" end
+		if base.action == "drain" then drain = base end
+		if base.action == "fillOil" then sources[base] = { assert(drain) } end
+		if (base.action == "loosen" and job == "brakes") or base.action == "listen" or base.action == "testDamper" then
+			sources[base] = {}
+		end
+		copies[base] = action
+		table.insert(work, action)
+		table.insert(state.steps, action)
+	end
+	local function requireAction(base: Step, prerequisites: { Step }, skipDisposal: boolean)
+		local copy = copies[base]
+		if copy and not (skipDisposal and Repair.disposal[base.target]) then
+			if not table.find(prerequisites, copy) then table.insert(prerequisites, copy) end
+		else
+			for _, earlier in sources[base] do requireAction(earlier, prerequisites, skipDisposal) end
+		end
+	end
+	for _, base in original do
+		local action = copies[base]
+		if not action then continue end
+		local prerequisites = {}
+		for _, earlier in sources[base] do
+			requireAction(earlier, prerequisites, not Repair.disposal[action.target])
+		end
+		action.after = prerequisites
+	end
+	order.jobs[job] = work
+end
+
+function Repair.forOrder(jobIds: { string }, faults: { [string]: Faults }, toolOwners: { [string]: number }): State
+	local state = Repair.new(jobIds[1], nil, toolOwners)
+	state.steps = {}
+	state.order = { jobs = {}, looseWheels = {}, oilDrained = false }
+	for _, job in jobIds do Repair.addJob(state, job, faults[job]) end
+	return state
+end
+
+function Repair.jobProgress(state: State, job: string): (number, number)
+	local order = state.order
+	local steps = if order then order.jobs[job] or {} else state.steps
+	local completed = 0
+	for _, action in steps do
+		if state.done[action] then completed += 1 end
+	end
+	return completed, #steps
+end
+
+local function dependenciesDone(state: State, step: Step): boolean
+	for _, prerequisite in step.after or {} do
+		if not state.done[prerequisite] then return false end
+	end
+	return true
+end
+
+local function inPosition(state: State, step: Step): boolean
+	return (step.raised == nil or step.raised == state.raised) and (step.hoodOpen == nil or step.hoodOpen == state.hoodOpen)
+end
+
+local function canMove(state: State, step: Step): boolean
+	local order = assert(state.order)
+	if step == lower then return state.raised and next(order.looseWheels) == nil end
+	if step == closeHood then return state.hoodOpen end
+	if state.index > #state.steps then return false end
+	if step == raise then return not state.raised and not state.hoodOpen end
+	return step == openHood and not state.hoodOpen and not state.raised
+end
+
 local function ready(state: State, step: Step, index: number): boolean
 	if state.done[step] or state.index > #state.steps then return false end
-	if step.after then
-		for _, prerequisite in step.after do
-			if not state.done[prerequisite] then return false end
+	local order = state.order
+	if order then
+		local wheelJob = order.looseWheels[step.target]
+		if wheelJob and wheelJob ~= step.job then return false end
+		if step.action == "ignition" then
+			if order.oilDrained or state.components.Belt == "removed" or state.components.Battery == "removed" then return false end
 		end
-		return true
+		return dependenciesDone(state, step) and inPosition(state, step)
 	end
+	if step.after then return dependenciesDone(state, step) end
 	return index == 1 or state.done[state.steps[index - 1]] == true
 end
 
@@ -331,13 +456,35 @@ function Repair.available(state: State): { Step }
 	for index, step in state.steps do
 		if ready(state, step, index) then table.insert(available, step) end
 	end
+	if state.order then
+		for _, control in controls do
+			if canMove(state, control) then table.insert(available, control) end
+		end
+	end
 	return available
 end
 
 function Repair.current(state: State): Step?
 	if state.motionStep then return state.motionStep end
+	local order = state.order
+	if order then
+		for _, step in order.jobs[state.job] or {} do
+			if state.done[step] or not dependenciesDone(state, step) then continue end
+			if not inPosition(state, step) then
+				local control = if step.raised == true then (if state.hoodOpen then closeHood else raise)
+					elseif state.raised then lower elseif step.hoodOpen == true then openHood else closeHood
+				if canMove(state, control) then return control end
+			elseif ready(state, step, 0) then
+				return step
+			end
+		end
+	end
 	for index, step in state.steps do
 		if ready(state, step, index) then return step end
+	end
+	if order then
+		if canMove(state, lower) then return lower end
+		if canMove(state, closeHood) then return closeHood end
 	end
 	return nil
 end
@@ -387,6 +534,7 @@ function Repair.source(state: State, item: string): string?
 	local location = state.placements[item]
 	if location then
 		if spec.target or location == "Ground" or location == "Recovery" then return location end
+		if state.order and location ~= "Bench" then return location end
 		for _, step in Repair.available(state) do
 			if step.cargo == item then return location end
 		end
@@ -420,25 +568,36 @@ function Repair.needsEmptyHands(step: Step): boolean
 	return step.cargo == nil and step.output ~= nil and step.leaveAt == nil
 end
 
-function Repair.act(state: State, playerId: number, action: string | Step): boolean
+function Repair.stockFrom(state: State, supply: State, item: string): number?
+	if state == supply or not cargo[item].target or state.carried[item] or state.placements[item] then return nil end
+	return supply.carried[item]
+end
+
+function Repair.act(state: State, playerId: number, action: string | Step, supply: State?): boolean
 	if state.moving or playerId == 0 then return false end
 	local current = if type(action) == "string" then Repair.current(state) else action
 	if not current then return false end
 	if type(action) == "string" then
 		if current.action ~= action then return false end
+	elseif state.order and current.motion then
+		if not canMove(state, current) then return false end
 	else
 		local index = table.find(state.steps, current)
 		if not index or not ready(state, current, index) then return false end
 	end
 	if current.tool and state.tools[current.tool] ~= playerId then return false end
-	if current.cargo and state.carried[current.cargo] ~= playerId then return false end
+	local inventory = state
+	if current.cargo and state.carried[current.cargo] ~= playerId then
+		if not supply or Repair.stockFrom(state, supply, current.cargo) ~= playerId then return false end
+		inventory = supply
+	end
 	if Repair.needsEmptyHands(current) and (Repair.carrying(state, playerId) or Repair.using(state, playerId)) then return false end
 	if current.motion then
 		state.moving, state.motionStep = true, current
 		return true
 	end
 	if current.cargo then
-		state.carried[current.cargo] = nil
+		inventory.carried[current.cargo] = nil
 		state.placements[current.cargo] = current.storeAt
 	end
 	if current.output then
@@ -451,17 +610,37 @@ function Repair.act(state: State, playerId: number, action: string | Step): bool
 	if current.quote == "battery" then state.addBattery = true end
 	if current.quote == "window" then state.surcharge = 18 end
 	if current.note then state.note = current.note end
+	local order = state.order
+	if order then
+		if current.action == "loosen" then order.looseWheels[current.target] = current.job end
+		if current.action == "tighten" then order.looseWheels[current.target] = nil end
+		if current.action == "drain" then order.oilDrained = true end
+		if current.action == "fillOil" then order.oilDrained = false end
+	end
 	state.done[current] = true
 	state.index += 1
 	return true
 end
 
-function Repair.decline(state: State): boolean
-	local current = Repair.current(state)
+function Repair.decline(state: State, action: Step?): boolean
+	if state.moving then return false end
+	local current = action or Repair.current(state)
 	if not current or not current.quote then return false end
+	local index = table.find(state.steps, current)
+	if not index or not ready(state, current, index) then return false end
 	if current.quote == "window" then state.billable = false end
 	state.note = "Intervention reportée."
-	state.index = #state.steps + 1
+	local order = state.order
+	if order and current.job then
+		for _, remaining in order.jobs[current.job] do
+			if not state.done[remaining] then
+				state.done[remaining] = true
+				state.index += 1
+			end
+		end
+	else
+		state.index = #state.steps + 1
+	end
 	return true
 end
 
@@ -472,6 +651,7 @@ function Repair.finishMotion(state: State)
 	if motion == "raise" or motion == "lower" then state.raised = motion == "raise" end
 	if motion == "openHood" or motion == "closeHood" then state.hoodOpen = motion == "openHood" end
 	state.moving, state.motionStep = false, nil
+	if state.order then return end
 	state.done[current] = true
 	state.index += 1
 end

@@ -174,6 +174,7 @@ function Gear.build(world, part, cloneMesh, target, sign, model)
 	world.stocks, world.slots, world.toolDrops = {}, {}, {}
 	world.gearTarget = target
 	local layout = world.layout
+	local toolSide = layout.toolSide or -1
 	local function at(id, x, z, height)
 		local home = layout.stations[id]
 		return layout.at(home[1] + x, home[2] + z, height)
@@ -191,11 +192,11 @@ function Gear.build(world, part, cloneMesh, target, sign, model)
 		local id, x, z, height = table.unpack(data)
 		local parent = world.furniture[id].model
 		local position = at(id, x, z, height)
-		local turn = if isTool then -math.pi / 2 else 0
+		local turn = if isTool then toolSide * math.pi / 2 else 0
 		local pose = CFrame.new(position) * CFrame.Angles(0, turn, 0)
 		local visual = Gear.place(world, key, parent, pose)
 		world.stocks[key] = { model = visual, parent = parent, pose = parent:GetPivot():ToObjectSpace(pose) }
-		local offset = if isTool then Vector3.new(-0.64, 0.27, 0) else Vector3.new(0, 0.27, -0.25)
+		local offset = if isTool or key == "pan" then Vector3.new(toolSide * 0.64, 0.27, 0) else Vector3.new(0, 0.27, -0.25)
 		if key == "newTire" then offset = Vector3.new(0, 0.48, 1.35) end
 		world.targets[spec.target] = target(parent, spec.target, position + offset)
 	end
@@ -205,7 +206,7 @@ function Gear.build(world, part, cloneMesh, target, sign, model)
 	}
 	for key, data in tools do makeStock(key, Repair.tools[key], data, true) end
 	sign(target(panel, "Poste d’outillage", at("toolPanel", 0, 0, 5.08)), "OUTILLAGE", 0, 24)
-	part(panel, "Panneau d’outillage", Vector3.new(0.14, 1.67, 6.24), at("toolPanel", 0.32, 0, 3.78), dark, true)
+	part(panel, "Panneau d’outillage", Vector3.new(0.14, 1.67, 6.24), at("toolPanel", -toolSide * 0.22, 0, 3.78), dark, true)
 
 	local supplies = {
 		pads = {"partsChassis", 0, -0.42, 3.01}, pan = {"toolOil", 0, 0, 2.53}, freshOil = {"counter", -0.37, 0.23, 3.03},
@@ -217,7 +218,7 @@ function Gear.build(world, part, cloneMesh, target, sign, model)
 		newWindow = {"partsElectric", 0.06, -0.42, 3.57}, newTire = {"tireRack", 0.6, 0, 1.36},
 	}
 	for key, data in supplies do makeStock(key, Repair.cargo[key], data, false) end
-	sign(world.targets.Pads, "CHÂSSIS", 1.04, 25)
+	sign(world.targets.Pads, "CHÂSSIS", 0.39, 25)
 	sign(world.targets.BatteryStock, "ÉLECTRICITÉ", 1.02, 25)
 	sign(world.targets.OilPan, "VIDANGE", 0.93, 25)
 	sign(world.targets.CoolantStock, "FLUIDES", 1.32, 23)
@@ -245,7 +246,7 @@ function Gear.build(world, part, cloneMesh, target, sign, model)
 	for _, storage in { {"TireBin", "PNEUS USÉS", tireBin, 3.68}, {"Scrap", "MÉTAUX", scrap, 2.67} } do
 		local key, label, position, width = table.unpack(storage)
 		part(world.room, label, Vector3.new(width, 1.14, 1.7), position, dark, true, Enum.Material.Metal)
-		world.targets[key] = target(world.room, key, position + Vector3.new(-width / 2 - 0.12, 0.86, 0))
+		world.targets[key] = target(world.room, key, position + Vector3.yAxis * 0.95)
 		sign(world.targets[key], label, 1.05, 38)
 	end
 	world.scrapVisuals = {}

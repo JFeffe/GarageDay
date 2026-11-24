@@ -254,9 +254,16 @@ local function buildStations(world)
 			prop(world, item[1], item[2], item[3], station(item[1]), item[4], item[5], item[6])
 		end
 	end
-	local toolsTurn = if world.layout == Layouts.Tandem then 0 else -math.pi / 2
+	local tandem = world.layout == Layouts.Tandem
+	local toolsTurn = if tandem then 0 else -math.pi / 2
 	for _, point in { "toolWrench", "toolPressure", "toolInspection", "toolOil" } do
-		prop(world, point, "Cabinet", "Poste d’outillage", station(point), Vector3.new(2.73, 2.37, 2.45), red, toolsTurn)
+		local cabinet = prop(world, point, "Cabinet", "Poste d’outillage", station(point), Vector3.new(2.73, 2.37, 2.45), red, toolsTurn)
+		if tandem then
+			-- Keep saved turns relative to the original cabinet orientation.
+			local item = world.furniture[point]
+			item.turn = 1
+			cabinet:PivotTo(item.home * CFrame.Angles(0, math.pi / 2, 0))
+		end
 	end
 	local phone = station("phone") + Vector3.new(-1.55, 2.81, -0.06)
 	local desk = world.furniture.phone.model
@@ -267,6 +274,13 @@ local function buildStations(world)
 	part(reception, "Terminal", Vector3.new(0.97, 0.46, 0.86), counter + Vector3.new(-1.55, 3.52, -0.06), steel)
 	part(reception, "Voyant de caisse", Vector3.new(0.8, 0.06, 0.19), counter + Vector3.new(-1.55, 3.79, 0.31), mint)
 	local waste = station("wasteOil")
+	local drum = world.furniture.wasteOil.model
+	local lid = part(drum, "Couvercle du fût", Vector3.new(0.16, 1.91, 1.91), waste + Vector3.yAxis * 2.30, yellow, false, Enum.Material.Metal)
+	lid.Shape = Enum.PartType.Cylinder
+	lid.CFrame *= CFrame.Angles(0, 0, math.pi / 2)
+	local inlet = part(drum, "Orifice pour l’huile", Vector3.new(0.08, 0.7, 0.7), waste + Vector3.yAxis * 2.41, black)
+	inlet.Shape = Enum.PartType.Cylinder
+	inlet.CFrame *= CFrame.Angles(0, 0, math.pi / 2)
 	local recycling = station("recycling")
 	local compressor = prop(world, "compressor", "Compressor", "Compresseur", station("compressor"), Vector3.new(2.1, 2.35, 1.64), teal, math.pi / 2)
 	world.compressor = compressor:FindFirstChildWhichIsA("MeshPart")
@@ -277,8 +291,8 @@ local function buildStations(world)
 		{ "Phone", "TÉLÉPHONE", phone + Vector3.yAxis * 0.34, desk },
 		{ "Reception", "ACCUEIL", counter + Vector3.new(1.64, 3.62, -1.12), reception },
 		{ "Checkout", "CAISSE", counter + Vector3.new(-1.64, 3.75, -1.12), reception },
-		{ "WasteOil", "HUILE USÉE", waste + Vector3.new(-0.94, 2.17, 0), world.furniture.wasteOil.model },
-		{ "Recycling", "RECYCLAGE", recycling + Vector3.new(-0.97, 1.8, 0), bin },
+		{ "WasteOil", "HUILE USÉE", waste + Vector3.yAxis * 2.93, drum },
+		{ "Recycling", "RECYCLAGE", recycling + Vector3.yAxis * 2.28, bin },
 	} do
 		local anchor = target(entry[4], entry[1], entry[3])
 		world.targets[entry[1]] = anchor
@@ -301,14 +315,26 @@ local function buildBay(world)
 	world.targets.Dock = target(room, "Repère baie", world.dockPose.Position + Vector3.new(0, 0.2, -5.2))
 	world.targets.Parking = target(room, "Repère sortie", world.parkingPose.Position + Vector3.new(0, 0.2, -5.9))
 
-	for side, z in { intake = spec.intake, outbound = 0.07 } do
+	local opening = 3.24 * layout.scale
+	local gateHeight = 8.15
+	local width = opening + 0.08
+	for side, z in { intake = spec.intake, outbound = 0.09 } do
 		local pose = CFrame.new(at(spec.x, z))
 		local gate = model(room, (if side == "intake" then "Rideau d’entrée " else "Rideau de sortie ") .. index, pose)
 		local skin = cloneMesh(world.meshes.Roller, gate, pose)
-		local stop = part(gate, "Rideau", Vector3.new(9.35, 8.15, 0.43), pose.Position + Vector3.yAxis * 4.075, teal, true)
-		if skin then stop.Transparency = 1 end
-		part(room, "Traverse", Vector3.new(9.7, roofHeight - 8.15, 0.63), pose.Position + Vector3.yAxis * ((roofHeight + 8.15) / 2), wall, true)
-		world.gates[side] = { panels = { stop, skin }, pose = pose, open = false }
+		local stop = part(gate, "Rideau", Vector3.new(width, gateHeight, 0.4), pose.Position + Vector3.yAxis * (gateHeight / 2), teal, true)
+		if skin then
+			skin.Size = Vector3.new(width, gateHeight, skin.Size.Z)
+			skin.CFrame = stop.CFrame
+			stop.Transparency = 1
+		end
+		for _, edge in { -opening / 2, opening / 2 } do
+			part(room, "Glissière du rideau", Vector3.new(0.31, gateHeight, 0.71),
+				pose.Position + Vector3.new(edge, gateHeight / 2, 0), steel, true, Enum.Material.Metal)
+		end
+		part(room, "Traverse", Vector3.new(opening + 0.31, roofHeight - gateHeight, 0.63),
+			pose.Position + Vector3.yAxis * ((roofHeight + gateHeight) / 2), wall, true)
+		world.gates[side] = { panels = { stop, skin }, pose = pose, height = gateHeight, open = false }
 	end
 
 	local pivot = CFrame.new(at(spec.x, spec.z, 0.06) - Vector3.zAxis * 1.74)
@@ -676,8 +702,8 @@ function World.apply(world, lane, repair)
 		local open = (phase == "intake" and lane.phase == "intake") or (phase == "outbound" and lane.phase == "outbound")
 		if open ~= gate.open then
 			gate.open = open
-			local height = if open then 0.37 else 8.15
-			local position = gate.pose * CFrame.new(0, 8.15 - height / 2, 0)
+			local height = if open then 0.37 else gate.height
+			local position = gate.pose * CFrame.new(0, gate.height - height / 2, 0)
 			for _, panel in gate.panels do
 				TweenService:Create(panel, TweenInfo.new(0.55, Enum.EasingStyle.Sine), {
 					Size = Vector3.new(panel.Size.X, height, panel.Size.Z), CFrame = position,

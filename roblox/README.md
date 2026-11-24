@@ -4,7 +4,7 @@ Deux cartes issues de la version Godot sont disponibles. Le Petit Atelier a une 
 
 Au téléphone, **F** au clavier ou **Y** à la manette rouvre ce menu avant le premier service, le soir ou après le bilan.
 
-Le planning à l’accueil affiche les rendez-vous et leur prix. Accueille chaque client, conduis son véhicule de la place d’arrivée au pont correspondant, fais les interventions, puis gare-le sur sa place de sortie et encaisse à la caisse. Au Tandem, les deux voitures peuvent rester à des étapes différentes et passer à la caisse dans l’ordre où tu termines leur réparation.
+Les plannings à l’accueil et dans l’atelier affichent les clients, leur baie et les réparations restantes. Accueille chaque client, conduis son véhicule de la place d’arrivée au pont correspondant, fais les interventions, puis gare-le sur sa place de sortie et encaisse à la caisse. Au Tandem, les deux voitures peuvent rester à des étapes différentes et passer à la caisse dans l’ordre où tu termines leur réparation.
 
 ## Journées de service
 
@@ -23,9 +23,11 @@ Le tableau de service affiche la patience de chaque client. La note du jour part
 
 Prépare la clé à choc, le bac de vidange, la valise de diagnostic, le manomètre, le cliquet, la sonde ou l’extracteur selon la panne. Les pannes peuvent varier au sein d’une même intervention. Une crevaison peut demander une rustine ou le remplacement de la roue. Une inspection peut mener à un devis pour la batterie.
 
-Avec plusieurs interventions sur le bon de travail, **F** près de la portière ou **Y** à la manette permet de choisir la prochaine. Ce choix revient entre deux interventions.
+Tu peux avancer sur plusieurs interventions du même véhicule et préparer les outils et pièces à l’avance. Les invites apparaissent dès que leurs conditions sont réunies. **F** près de la portière ou **Y** à la manette change l’intervention mise en avant dans le suivi.
 
 Pour les pneus, chaque roue a ses propres gestes. Tu peux desserrer et déposer les quatre roues avant d’en remonter une, puis choisir l’ordre de remontage et de recyclage. Une roue desserrée tombe au sol même si tu tiens déjà un outil ou une pièce. Libère tes mains pour la ramasser et la transporter.
+
+Pour une vidange, prends le bac vide au poste **VIDANGE**, lève le pont et utilise le bac sous le moteur. Ramasse ensuite le bac plein et vide-le dans le fût **HUILE USÉE**. Tu peux le poser avec **Q** et le ramasser plus tard. Termine la vidange en abaissant le pont, en versant l’huile neuve sous le capot et en recyclant le bidon vide.
 
 Les pièces lourdes se portent à deux mains et ralentissent la marche. Le chariot transporte jusqu’à quatre roues neuves. Les bacs séparent l’huile usée, les pneus, les métaux et le recyclage courant. Le poste **OBJETS RÉCUPÉRÉS** permet de retrouver certaines pièces quand un joueur quitte.
 
@@ -41,7 +43,7 @@ Dans le fichier local de Studio, la sauvegarde passe par le plugin Garage Day - 
 
 ## Commandes
 
-À pied, les gants et les objets tenus sont visibles en première personne. Utilise **E** au clavier, **X** à la manette ou l’invite tactile. **Q**, **B** ou **Poser** dépose l’objet que tu tiens ou lâche le chariot. Il faut libérer tes mains pour reprendre un outil, prendre une pièce ou conduire. L’invite **Ranger** permet de rapporter un outil à son poste. Les devis ont leur propre invite pour reporter l’intervention.
+À pied, les gants et les objets tenus sont visibles en première personne. Utilise **E** au clavier, **X** à la manette ou l’invite tactile. Quand plusieurs gestes sont disponibles au même endroit, utilise la touche affichée à côté du geste voulu. **Q**, **B** ou **Poser** dépose l’objet que tu tiens ou lâche le chariot. Il faut libérer tes mains pour reprendre un outil, prendre une pièce ou conduire. L’invite **Ranger** permet de rapporter un outil à son poste. Les devis ont leur propre invite pour reporter l’intervention.
 
 En réaménagement, **E** dépose, **R** pivote et **Q** annule. À la manette, utilise **X**, **LB** et **B**. Les mêmes actions apparaissent à l’écran sur mobile.
 

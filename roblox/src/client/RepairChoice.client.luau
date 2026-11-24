@@ -67,7 +67,7 @@ bounds.Parent = card
 local rule = Instance.new("UIStroke")
 rule.Color, rule.Parent = Color3.fromRGB(93, 132, 117), card
 
-text(card, "Choisir une réparation", UDim2.fromOffset(17, 12), UDim2.new(1, -74, 0, 38), 22, cream)
+text(card, "Suivre une réparation", UDim2.fromOffset(17, 12), UDim2.new(1, -74, 0, 38), 22, cream)
 local details = text(card, "", UDim2.fromOffset(18, 50), UDim2.new(1, -36, 0, 21), 13, mint)
 local dismiss = text(card, "×", UDim2.new(1, -47, 0, 10), UDim2.fromOffset(35, 34), 20, cream, true)
 dismiss.Name, dismiss.Modal = "Fermer", true

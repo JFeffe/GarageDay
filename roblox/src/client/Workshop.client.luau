@@ -198,7 +198,7 @@ local targetHelp = {
 	Lever = "Vise le levier jaune à droite du pont.", Hood = "Place-toi devant le véhicule.",
 	BatteryTray = "Vise le plateau de batterie sous le capot.",
 	OilCap = "Vise le bouchon sur le moteur.", Drain = "Vise le dessous du moteur, depuis l’avant.",
-	WasteOil = "Vide le bac au fût marqué HUILE USÉE.",
+	WasteOil = "Vide le bac au fût HUILE USÉE. Le bac vide retourne au poste VIDANGE.",
 	Recycling = "Dépose la pièce au bac marqué RECYCLAGE.", Scrap = "Va au bac MÉTAUX, près de la porte piétonne.",
 	TireBin = "Amène la roue au bac PNEUS USÉS sur le parvis.", Quote = "Retourne voir le client dans la salle d’attente.",
 	WheelStand = "Repère le support de roue près de l’établi.", Bench = "Repère l’établi dans l’atelier.",
@@ -238,6 +238,10 @@ local function focusedBay()
 	local driver = player:GetAttribute("GarageDriverBay")
 	if driver then return bays:FindFirstChild(tostring(driver)) end
 	if session:GetAttribute("Phase") ~= "service" then return nil end
+	if player:GetAttribute("GarageHeldKey") == "usedOil" then
+		local oilBay = bays:FindFirstChild(tostring(player:GetAttribute("GarageHeldBay")))
+		if oilBay then return oilBay end
+	end
 	local id = player:GetAttribute("GarageFocusBay")
 	local remembered = id and bays:FindFirstChild(tostring(id))
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -352,10 +356,9 @@ local function refresh()
 		local motion = motionHelp[value("Motion", "")]
 		if motion and value("Moving") then
 			action.Text, hint.Text = motion[1], motion[2]
-		elseif job == Repair.jobs.tires and value("AvailableActions", 0) > 1 then
-			action.Text = "Remplacer les pneus"
-			hint.Text = if hand then "Choisis une roue. Pose ce que tu tiens avant d’en ramasser une."
-				else "Les gestes disponibles s’affichent à chaque roue. La clé à choc sert au desserrage et au serrage."
+		elseif heldKey == "usedOil" then
+			action.Text = "Vider le bac d’huile usée"
+			hint.Text = targetHelp.WasteOil
 		elseif hand and (value("NeedsEmptyHands") or (toolKey and toolOwner ~= player.UserId) or (cargo and owner ~= player.UserId)) then
 			hint.Text = "Pose d’abord ce que tu tiens."
 		elseif toolKey and toolOwner ~= player.UserId then
@@ -371,10 +374,14 @@ local function refresh()
 				else cargo.hint
 		elseif actionKey == "adjustPressure" or actionKey == "verifyPressure" then
 			hint.Text = string.format("%d psi mesurés · cible 34 psi.", value("Pressure", 34))
+		elseif actionKey == "drain" and cargoKey == "pan" then
+			hint.Text = "Place le bac sous le moteur depuis l’avant, puis ramasse le bac plein."
+		elseif actionKey == "fillOil" then
+			hint.Text = "Verse le bidon d’huile neuve au bouchon sous le capot."
 		else
 			hint.Text = targetHelp[value("Target", "")] or "Approche-toi du point indiqué."
 		end
-		if value("CanChooseRepair") then hint.Text ..= "\n" .. alternate .. " au véhicule pour choisir l’intervention." end
+		if value("CanChooseRepair") and heldKey ~= "usedOil" then hint.Text ..= "\n" .. alternate .. " au véhicule pour changer le suivi." end
 	elseif evening then
 		orderLine.Text = string.format("Recette du jour · %d $", session:GetAttribute("DailyCash") or 0)
 		if phase == "vendor" and day >= Service.lastDay then hint.Text = "Le téléphone affiche le bilan. La caravane est encore ouverte." end
@@ -410,7 +417,7 @@ end
 for _, bay in bays:GetChildren() do watchBay(bay) end
 bays.ChildAdded:Connect(watchBay)
 bays.ChildRemoved:Connect(refresh)
-for _, attr in { "GarageDriverBay", "GarageFocusBay", "GarageHeldKind", "GarageHeldKey" } do
+for _, attr in { "GarageDriverBay", "GarageFocusBay", "GarageHeldKind", "GarageHeldKey", "GarageHeldBay" } do
 	player:GetAttributeChangedSignal(attr):Connect(refresh)
 end
 session.AttributeChanged:Connect(refresh)

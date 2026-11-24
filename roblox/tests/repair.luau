@@ -55,6 +55,13 @@ for id in Repair.jobs do
 			if step.cargo then allCargo[step.cargo] = true end
 		end
 		finish(repair)
+		local work = Repair.forOrder({ id }, { [id] = faults }, {})
+		for _, gesture in work.steps do
+			if gesture.cargo then allCargo[gesture.cargo] = true end
+		end
+		finish(work)
+		local done, steps = Repair.jobProgress(work, id)
+		assert(done == steps, id)
 		if id == "pressure" then assert(repair.pressure == 34) end
 		if id == "window" then assert(repair.surcharge == (if faults.windowModule then 18 else 0)) end
 		if id == "inspection" then assert(repair.addBattery == (faults.weakBattery == true)) end
@@ -71,6 +78,65 @@ local function available(repair: Repair.State, action: string, target: string?, 
 	end
 	return nil
 end
+
+local oilOrder = Repair.forOrder({ "oil", "wipers" }, {}, {})
+local function perform(repair: Repair.State, action: string, target: string?)
+	assert(Repair.act(repair, mechanic, assert(available(repair, action, target))), action)
+	if repair.moving then Repair.finishMotion(repair) end
+end
+assert(Repair.take(oilOrder, mechanic, "pan"))
+assert(not available(oilOrder, "drain") and not available(oilOrder, "fillOil"))
+perform(oilOrder, "remove_Wipers")
+perform(oilOrder, "raise")
+perform(oilOrder, "drain")
+assert(Repair.source(oilOrder, "usedOil") == "UsedPan" and Repair.take(oilOrder, mechanic, "usedOil"))
+assert(not Repair.take(oilOrder, mechanic, "newWipers"))
+assert(Repair.drop(oilOrder, mechanic, "Ground") == "usedOil" and Repair.take(oilOrder, mechanic, "usedOil"))
+perform(oilOrder, "lower")
+perform(oilOrder, "recycle_usedOil")
+assert(not Repair.carrying(oilOrder, mechanic))
+assert(not available(oilOrder, "fillOil"))
+perform(oilOrder, "openHood")
+assert(Repair.take(oilOrder, mechanic, "freshOil"))
+perform(oilOrder, "fillOil")
+perform(oilOrder, "closeHood")
+assert(Repair.drop(oilOrder, mechanic, "Ground") == "emptyBottle")
+assert(Repair.take(oilOrder, mechanic, "newWipers"))
+perform(oilOrder, "fit_Wipers")
+perform(oilOrder, "testWipers")
+finish(oilOrder)
+
+local firstOilBay = Repair.forOrder({ "oil" }, {}, {})
+local secondOilBay = Repair.forOrder({ "oil" }, {}, {})
+assert(Repair.take(firstOilBay, mechanic, "pan"))
+perform(secondOilBay, "raise")
+local secondDrain = assert(available(secondOilBay, "drain"))
+assert(not Repair.act(secondOilBay, stranger, secondDrain, firstOilBay))
+assert(Repair.act(secondOilBay, mechanic, secondDrain, firstOilBay))
+assert(not Repair.carrying(firstOilBay, mechanic))
+assert(Repair.take(secondOilBay, mechanic, "usedOil"))
+assert(not Repair.stockFrom(firstOilBay, secondOilBay, "usedOil"))
+perform(secondOilBay, "recycle_usedOil")
+finish(secondOilBay)
+
+local mixed = Repair.forOrder({ "brakes", "tires", "oil" }, {}, {})
+perform(mixed, "raise")
+assert(Repair.takeTool(mixed, mechanic, "impact"))
+local brakeLoosen
+for _, gesture in Repair.available(mixed) do
+	if gesture.action == "loosen" and gesture.job == "brakes" and gesture.target == "FrontLeft" then brakeLoosen = gesture end
+end
+assert(Repair.act(mixed, mechanic, assert(brakeLoosen)))
+assert(not available(mixed, "lower") and not available(mixed, "loosen", "FrontLeft"))
+perform(mixed, "loosen", "BackRight")
+perform(mixed, "removeWheel", "BackRight")
+perform(mixed, "removeWheel", "FrontLeft")
+assert(Repair.source(mixed, "usedTire_BackRight") == "FloorBackRight")
+assert(Repair.source(mixed, "serviceWheel_brakes_FrontLeft") == "FloorFrontLeft")
+assert(not Repair.take(mixed, mechanic, "serviceWheel_brakes_FrontLeft"))
+assert(Repair.using(mixed, mechanic) == "impact")
+assert(Repair.returnTool(mixed, mechanic, "impact"))
+finish(mixed)
 
 local tires = Repair.new("tires")
 local wheels = { "BackRight", "FrontRight", "BackLeft", "FrontLeft" }
@@ -296,7 +362,8 @@ assert(Service.finishRepair(workOrder, "wipers", true, false, 0, false))
 assert(not Service.selectRepair(workOrder, "wipers") and Service.selectRepair(workOrder, "tires"))
 assert(Service.finishRepair(workOrder, "tires", true, false, 0, false))
 assert(workOrder.phase == "repair" and pending.jobs[workOrder.repairIndex] == "oil")
-assert(Service.finishRepair(workOrder, "oil", true, false, 0, false))
+assert(Service.finishRepair(workOrder, "oil", true, false, 0, false, nil, true))
+assert(workOrder.phase == "repair" and Service.prepareReturn(workOrder))
 assert(workOrder.phase == "outbound" and pending.amount == pending.estimate and not Service.selectRepair(workOrder, "oil"))
 
 local tandem = Service.new(Repair.jobs, random(95))

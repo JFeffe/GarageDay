@@ -170,7 +170,15 @@ function Service.selectRepair(state: State, job: string, lane: Lane?): boolean
 	return true
 end
 
-function Service.finishRepair(state: State, job: string, billable: boolean, declined: boolean, surcharge: number, addBattery: boolean, lane: Lane?): boolean
+function Service.prepareReturn(state: State, lane: Lane?): boolean
+	local active = lane or state
+	local order = Service.current(state, lane)
+	if active.phase ~= "repair" or not order or active.repairIndex <= #order.jobs then return false end
+	active.phase = "outbound"
+	return true
+end
+
+function Service.finishRepair(state: State, job: string, billable: boolean, declined: boolean, surcharge: number, addBattery: boolean, lane: Lane?, deferReturn: boolean?): boolean
 	local active = lane or state
 	local order = Service.current(state, lane)
 	if active.phase ~= "repair" or not order or order.jobs[active.repairIndex] ~= job then return false end
@@ -183,7 +191,7 @@ function Service.finishRepair(state: State, job: string, billable: boolean, decl
 	if surcharge > 0 then order.estimate += surcharge end
 	if not billable then order.estimate -= state.catalog[job].amount end
 	active.repairIndex += 1
-	if active.repairIndex > #order.jobs then active.phase = "outbound" end
+	if not deferReturn then Service.prepareReturn(state, lane) end
 	return true
 end
 

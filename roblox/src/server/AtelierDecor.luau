@@ -248,15 +248,9 @@ local function facade(world, part, cloneMesh)
 	end
 end
 
-function Decor.build(world, part, cloneMesh)
-	world.nightLights, world.nightWindows = {}, {}
-	street(world, part)
-	forecourt(world, part)
-	facade(world, part, cloneMesh)
-
-	local x, z = table.unpack(world.layout.board)
-	local panel = part(world.room, "Planning du garage", Vector3.new(7.12, 4.76, 0.13), world.layout.at(x, z, 6.15), ink, false, Enum.Material.Wood)
-	panel.CFrame = CFrame.lookAt(panel.Position, panel.Position - Vector3.xAxis)
+local function planningBoard(world, part, name, position, facing)
+	local panel = part(world.room, name, Vector3.new(8.0, 4.76, 0.13), position, ink, false, Enum.Material.Wood)
+	panel.CFrame = CFrame.lookAt(position, position + facing)
 	local ui = surface(panel, Enum.NormalId.Front, Vector2.new(630, 416), 42)
 	local header = letter(ui, "Planning du garage", UDim2.fromScale(0.06, 0.05), UDim2.fromScale(0.86, 0.11), paper, Enum.Font.GothamBold)
 	header.TextXAlignment = Enum.TextXAlignment.Left
@@ -266,13 +260,29 @@ function Decor.build(world, part, cloneMesh)
 	divider.BorderSizePixel = 0
 	divider.BackgroundColor3 = brass
 	divider.Parent = ui
-	world.boardHeader = header
-	world.boardRows = {}
+	local rows = {}
 	for i = 1, 9 do
-		local row = letter(ui, "", UDim2.fromScale(0.06, 0.229 + (i - 1) * 0.084), UDim2.fromScale(0.88, 0.072), paper, Enum.Font.GothamMedium)
+		local y = 0.229 + (i - 1) * 0.084
+		local status = letter(ui, "", UDim2.fromScale(0.06, y), UDim2.fromScale(0.16, 0.072), paper, Enum.Font.GothamBold)
+		status.TextXAlignment = Enum.TextXAlignment.Left
+		local row = letter(ui, "", UDim2.fromScale(0.24, y), UDim2.fromScale(0.70, 0.072), paper, Enum.Font.GothamMedium)
 		row.TextXAlignment = Enum.TextXAlignment.Left
-		world.boardRows[i] = row
+		rows[i] = { status = status, detail = row }
 	end
+	return { header = header, rows = rows }
+end
+
+function Decor.build(world, part, cloneMesh)
+	world.nightLights, world.nightWindows = {}, {}
+	street(world, part)
+	forecourt(world, part)
+	facade(world, part, cloneMesh)
+
+	local x, z = table.unpack(world.layout.board)
+	world.boards = {
+		planningBoard(world, part, "Planning de l’accueil", world.layout.at(x, z, 6.15), -Vector3.xAxis),
+		planningBoard(world, part, "Planning de l’atelier", world.layout.at(world.layout.wing + 0.27, z, 6.15), Vector3.xAxis),
+	}
 
 	local marker = Instance.new("BillboardGui")
 	marker.Name = "Repère de l’étape"
@@ -298,20 +308,35 @@ function Decor.build(world, part, cloneMesh)
 end
 
 function Decor.updateBoard(world, state, jobs)
-	world.boardHeader.Text = if state.day > 0 then `Planning · Jour {state.day}` else "Planning du garage"
-	for i, row in world.boardRows do
+	local header = if state.day > 0 then `Planning · Jour {state.day}` else "Planning du garage"
+	for _, board in world.boards do board.header.Text = header end
+	for i = 1, #world.boards[1].rows do
 		local order = state.orders[i]
-		row.Visible = order ~= nil
+		local status, detail, color = "", "", paper
 		if order then
-			local current
+			local current, first = nil, 1
 			for _, bay in world.bays do
-				if bay.lane and bay.lane.ticket == i then current = "B" .. bay.id break end
+				if bay.lane and bay.lane.ticket == i then
+					current, first = bay.id, bay.lane.repairIndex
+					break
+				end
 			end
-			local summary = {}
-			for _, key in order.jobs do table.insert(summary, jobs[key].name) end
-			local prefix = if order.paid then "✓  " elseif current then current .. "  " else ""
-			row.Text = string.format("%s%s · %s · %d $", prefix, order.name, table.concat(summary, " / "), order.estimate)
-			row.TextColor3 = if order.paid then Color3.fromRGB(170, 218, 187) elseif current then brass else paper
+			if order.paid then
+				status, detail, color = "Réglé", order.name, Color3.fromRGB(170, 218, 187)
+			else
+				local pending = {}
+				for index = first, #order.jobs do table.insert(pending, jobs[order.jobs[index]].name) end
+				status = if current then `Baie 0{current}` else "À venir"
+				if current then color = brass end
+				local work = if #pending > 0 then table.concat(pending, " / ") else "À encaisser"
+				detail = string.format("%s · %s · %d $", order.name, work, order.estimate)
+			end
+		end
+		for _, board in world.boards do
+			local row = board.rows[i]
+			row.status.Text, row.detail.Text = status, detail
+			row.status.TextColor3, row.detail.TextColor3 = color, color
+			row.status.Visible, row.detail.Visible = order ~= nil, order ~= nil
 		end
 	end
 end
